@@ -18,4 +18,4 @@ export const SUPABASE_ANON_KEY =
 export const AUTH_REDIRECT_URL =
   typeof window !== 'undefined'
     ? `${window.location.origin}${window.location.pathname.split('#')[0]}`
-    : 'https://dreamhelpers2025.github.io/stormforge/app/';
+    : 'https://stormforgebuilder.com/app/';
