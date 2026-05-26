@@ -1,0 +1,42 @@
+---
+import Sigil from './Sigil.astro';
+---
+<footer class="relative border-t border-storm/20 bg-tempest/80 backdrop-blur-md">
+  <div class="max-w-7xl mx-auto px-6 lg:px-10 py-14 grid grid-cols-2 md:grid-cols-5 gap-8">
+    <div class="col-span-2">
+      <div class="flex items-center gap-3">
+        <Sigil size={40} class="text-dragonfire" />
+        <div>
+          <div class="font-display tracking-[0.3em] text-silver text-sm">STORMFORGE</div>
+          <div class="font-serif italic text-ember/80 text-[11px] tracking-[0.32em]">— ARCHIVE —</div>
+        </div>
+      </div>
+      <p class="text-fog/70 text-sm mt-4 max-w-sm leading-relaxed">
+        A cinematic worldbuilding archive for fantasy creators. Forge kingdoms, archive legends, keep every realm whole.
+      </p>
+    </div>
+
+    {[
+      { title: 'Archive', links: ['Codex', 'Dragons', 'Maps', 'Timelines'] },
+      { title: 'Creators', links: ['Pricing', 'Showcase', 'Community', 'Changelog'] },
+      { title: 'Lore', links: ['Guide', 'Templates', 'Inspiration', 'Tomes'] },
+    ].map((g) => (
+      <div>
+        <div class="font-display text-[11px] tracking-[0.3em] text-ember/80 mb-4">{g.title.toUpperCase()}</div>
+        <ul class="space-y-2 text-sm">
+          {g.links.map((l) => (
+            <li><a href="#" class="text-fog/80 hover:text-dragonfire transition">{l}</a></li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </div>
+
+  <div class="max-w-7xl mx-auto px-6 lg:px-10 pb-8">
+    <div class="rune-divider mb-6"></div>
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-fog/60">
+      <div>© Stormforge Archive — Vol. I of the Living Codex</div>
+      <div class="font-display tracking-[0.3em]">FORGE · ARCHIVE · ENDURE</div>
+    </div>
+  </div>
+</footer>

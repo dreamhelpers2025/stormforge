@@ -1,0 +1,84 @@
+---
+import SectionHeader from './SectionHeader.astro';
+import Icon from './Icon.astro';
+
+const houses = [
+  {
+    name: 'House Vorelith',
+    epithet: 'The Tempest Wings',
+    element: 'Storm',
+    color: '#43C7C7',
+    lineage: 'Skywyrm Lineage — 14 living scions',
+    territory: 'The Shattered Sky Isles',
+  },
+  {
+    name: 'House Karnoth',
+    epithet: 'Embers of the Deep',
+    element: 'Fire',
+    color: '#B88A3B',
+    lineage: 'Drakeshard Lineage — 9 living scions',
+    territory: 'The Cinderveil Range',
+  },
+  {
+    name: 'House Maelyr',
+    epithet: 'Whisperers of Tides',
+    element: 'Water',
+    color: '#1E7C86',
+    lineage: 'Leviathan Lineage — 6 living scions',
+    territory: 'The Abyssal Trench of Maelyr',
+  },
+];
+---
+<section id="dragons" class="relative py-28 scale-bg">
+  <div class="max-w-7xl mx-auto px-6 lg:px-10">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-14">
+      <SectionHeader
+        eyebrow="The Dragon Archives"
+        title="Houses of scale and storm."
+        description="Track elemental lineages, territories, and the silent politics between draconic dynasties."
+      />
+      <a href="#dragons" class="btn-ghost self-start lg:self-auto">View Bestiary</a>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {houses.map((h) => (
+        <article class="card card-glow p-7 relative">
+          <!-- elemental glow -->
+          <div
+            class="absolute -top-12 -right-12 w-48 h-48 rounded-full blur-3xl opacity-30 pointer-events-none"
+            style={`background:${h.color}`}
+          ></div>
+
+          <div class="flex items-center gap-3 mb-4 text-dragonfire">
+            <Icon name="dragon" size={28} />
+            <span class="font-display text-[10px] tracking-[0.3em] text-ember/80">{h.element.toUpperCase()} HOUSE</span>
+          </div>
+
+          <h3 class="font-display text-2xl tracking-wide text-silver">{h.name}</h3>
+          <p class="font-serif italic text-fog mt-1">{h.epithet}</p>
+
+          <dl class="mt-6 space-y-3 text-sm">
+            <div>
+              <dt class="font-display text-[10px] tracking-[0.3em] text-fog/60 uppercase">Lineage</dt>
+              <dd class="text-silver/90 mt-1">{h.lineage}</dd>
+            </div>
+            <div>
+              <dt class="font-display text-[10px] tracking-[0.3em] text-fog/60 uppercase">Territory</dt>
+              <dd class="text-silver/90 mt-1">{h.territory}</dd>
+            </div>
+          </dl>
+
+          <!-- scale shimmer -->
+          <div class="mt-6 flex items-center gap-1">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <span
+                class="block w-3 h-3 rounded-full border"
+                style={`border-color:${h.color}55; background:${i < 5 ? h.color + '44' : 'transparent'}`}
+              ></span>
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

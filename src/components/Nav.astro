@@ -1,0 +1,45 @@
+---
+import Sigil from './Sigil.astro';
+import Icon from './Icon.astro';
+const links = [
+  { label: 'Codex', href: '#codex' },
+  { label: 'Dragons', href: '#dragons' },
+  { label: 'Maps', href: '#maps' },
+  { label: 'Timelines', href: '#timelines' },
+  { label: 'Factions', href: '#factions' },
+];
+---
+<header class="sticky top-0 z-40 backdrop-blur-md bg-tempest/70 border-b border-storm/20">
+  <div class="max-w-7xl mx-auto px-6 lg:px-10 h-20 flex items-center justify-between">
+    <a href="#" class="flex items-center gap-3 group">
+      <Sigil size={42} class="text-dragonfire group-hover:drop-shadow-[0_0_18px_rgba(67,199,199,0.6)] transition" />
+      <div class="leading-tight">
+        <div class="font-display tracking-[0.3em] text-silver text-sm">STORMFORGE</div>
+        <div class="font-serif italic text-ember/80 text-[11px] tracking-[0.32em]">— ARCHIVE —</div>
+      </div>
+    </a>
+
+    <nav class="hidden md:flex items-center gap-8">
+      {links.map((l) => (
+        <a
+          href={l.href}
+          class="font-display text-[11px] tracking-[0.3em] uppercase text-fog hover:text-dragonfire transition relative"
+        >
+          {l.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden lg:flex items-center gap-2 px-3 py-2 rounded-md glass w-64">
+        <Icon name="rune" size={16} class="text-dragonfire/70" />
+        <input
+          type="text"
+          placeholder="Search the archive…"
+          class="bg-transparent outline-none text-sm text-silver placeholder:text-fog/50 flex-1 font-sans"
+        />
+      </div>
+      <a href="#enter" class="btn-primary !py-2 !px-4 text-[10px]">Enter Archive</a>
+    </div>
+  </div>
+</header>

@@ -1,0 +1,59 @@
+---
+interface Props {
+  size?: number;
+  class?: string;
+}
+const { size = 56, class: className = '' } = Astro.props;
+---
+<svg
+  width={size}
+  height={size}
+  viewBox="0 0 120 120"
+  xmlns="http://www.w3.org/2000/svg"
+  class={className}
+  aria-hidden="true"
+>
+  <defs>
+    <radialGradient id="sigilCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#43C7C7" stop-opacity="0.9"/>
+      <stop offset="60%" stop-color="#1E7C86" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#0B1E2D" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sigilStroke" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#43C7C7"/>
+      <stop offset="100%" stop-color="#1E7C86"/>
+    </linearGradient>
+  </defs>
+
+  <!-- outer rune ring -->
+  <circle cx="60" cy="60" r="54" fill="none" stroke="url(#sigilStroke)" stroke-opacity="0.55" stroke-width="1"/>
+  <circle cx="60" cy="60" r="48" fill="none" stroke="#43C7C7" stroke-opacity="0.25" stroke-dasharray="2 6" stroke-width="1"/>
+  <!-- tick marks at compass points -->
+  {[0, 90, 180, 270].map((a) => (
+    <line
+      x1="60" y1="6"
+      x2="60" y2="14"
+      stroke="#D8E0E5" stroke-opacity="0.7"
+      transform={`rotate(${a} 60 60)`}
+    />
+  ))}
+
+  <!-- core glow -->
+  <circle cx="60" cy="60" r="34" fill="url(#sigilCore)"/>
+
+  <!-- dragon silhouette (curled) -->
+  <g fill="none" stroke="#43C7C7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- body curl -->
+    <path d="M44 70 C 38 60, 42 46, 56 42 C 70 38, 82 48, 80 60 C 78 70, 68 74, 62 70"/>
+    <!-- head -->
+    <path d="M62 70 L66 76 L72 74 L70 68"/>
+    <!-- wing -->
+    <path d="M52 50 C 44 42, 36 44, 32 52 C 38 50, 44 52, 48 56" stroke-opacity="0.85"/>
+    <!-- tail with lightning hook -->
+    <path d="M44 70 C 40 78, 48 86, 56 84 L 60 92 L 54 90" stroke-opacity="0.9"/>
+  </g>
+
+  <!-- compass star at center -->
+  <path d="M60 50 L62 58 L70 60 L62 62 L60 70 L58 62 L50 60 L58 58 Z" fill="#D8E0E5" opacity="0.9"/>
+  <circle cx="60" cy="60" r="1.6" fill="#B88A3B"/>
+</svg>

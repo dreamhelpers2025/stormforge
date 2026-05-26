@@ -1,0 +1,30 @@
+---
+import Sigil from './Sigil.astro';
+---
+<section id="enter" class="relative py-28">
+  <div class="max-w-5xl mx-auto px-6 lg:px-10">
+    <div class="card p-10 md:p-16 text-center relative overflow-hidden">
+      <!-- backdrop glow -->
+      <div aria-hidden="true" class="absolute inset-0 -z-10 opacity-60"
+           style="background:
+             radial-gradient(ellipse at 50% 0%, rgba(67,199,199,0.20) 0%, transparent 60%),
+             radial-gradient(ellipse at 50% 100%, rgba(184,138,59,0.15) 0%, transparent 55%);"></div>
+
+      <div class="flex justify-center mb-6">
+        <Sigil size={84} class="text-dragonfire animate-pulseGlow rounded-full" />
+      </div>
+
+      <span class="rule-flourish">Open the Archive</span>
+      <h2 class="font-display text-3xl md:text-5xl tracking-tight text-silver mt-5">
+        Your realm awaits the <span class="text-dragonfire glow-text">first ink stroke</span>.
+      </h2>
+      <p class="text-fog/85 mt-5 max-w-xl mx-auto">
+        Begin a new chronicle — invite scribes, summon dragons, and watch your world become legend.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <a href="#" class="btn-primary">Forge a New World</a>
+        <a href="#codex" class="btn-ghost">Explore Sample Realm</a>
+      </div>
+    </div>
+  </div>
+</section>

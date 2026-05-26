@@ -1,0 +1,41 @@
+---
+import SectionHeader from './SectionHeader.astro';
+import Icon from './Icon.astro';
+
+const categories = [
+  { icon: 'codex',   title: 'Lore & Histories', desc: 'Chronicle the cultures, religions, and ages that shaped your realm.' },
+  { icon: 'crown',   title: 'Kingdoms & Courts', desc: 'Track ruling houses, succession lines, treaties, and territorial claims.' },
+  { icon: 'dragon',  title: 'Dragon Bestiary', desc: 'Catalogue species, lineage trees, elemental affinities, and territories.' },
+  { icon: 'map',     title: 'Cartography', desc: 'Pin lore hotspots and faction control onto living interactive maps.' },
+  { icon: 'scroll',  title: 'Magic Systems', desc: 'Codify schools of arcana, runic laws, and the cost of power.' },
+  { icon: 'shield',  title: 'Wars & Cataclysms', desc: 'Memorialize the battles, sieges, and shatterings that scar your world.' },
+] as const;
+---
+<section id="codex" class="relative py-28">
+  <div class="max-w-7xl mx-auto px-6 lg:px-10">
+    <SectionHeader
+      eyebrow="The Living Codex"
+      title="Every realm has a story. Stormforge keeps it whole."
+      description="A categorized archive built for the way fantasy creators actually think — interlinked, layered, and beautiful to revisit."
+    />
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {categories.map((c) => (
+        <article class="card card-glow group p-7 transition">
+          <div class="flex items-start justify-between">
+            <div class="w-12 h-12 rounded-lg border border-dragonfire/30 bg-tempest/60 flex items-center justify-center text-dragonfire group-hover:shadow-glow transition">
+              <Icon name={c.icon as any} size={22} />
+            </div>
+            <span class="font-display text-[10px] tracking-[0.3em] text-ember/80">CHAPTER</span>
+          </div>
+          <h3 class="font-display text-xl tracking-wide text-silver mt-6">{c.title}</h3>
+          <p class="text-fog/80 mt-3 text-sm leading-relaxed">{c.desc}</p>
+          <div class="mt-6 flex items-center gap-2 text-[11px] tracking-[0.3em] uppercase text-dragonfire/80 group-hover:text-dragonfire transition">
+            <span>Open Volume</span>
+            <span class="inline-block translate-y-px">→</span>
+          </div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
