@@ -11,8 +11,23 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/react": "^5.0.5",
     "@astrojs/tailwind": "^5.1.4",
+    "@tiptap/extension-image": "^3.23.6",
+    "@tiptap/extension-link": "^3.23.6",
+    "@tiptap/extension-placeholder": "^3.23.6",
+    "@tiptap/pm": "^3.23.6",
+    "@tiptap/react": "^3.23.6",
+    "@tiptap/starter-kit": "^3.23.6",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
     "astro": "^5.0.5",
-    "tailwindcss": "^3.4.17"
+    "dexie": "^4.4.2",
+    "nanoid": "^5.1.11",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.15.1",
+    "tailwindcss": "^3.4.17",
+    "zustand": "^5.0.13"
   }
 }

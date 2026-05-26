@@ -1,5 +1,7 @@
 ---
 import Sigil from './Sigil.astro';
+const base = import.meta.env.BASE_URL;
+const appHref = `${base}app/`;
 ---
 <section id="enter" class="relative py-28">
   <div class="max-w-5xl mx-auto px-6 lg:px-10">
@@ -22,7 +24,7 @@ import Sigil from './Sigil.astro';
         Begin a new chronicle — invite scribes, summon dragons, and watch your world become legend.
       </p>
       <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
-        <a href="#" class="btn-primary">Forge a New World</a>
+        <a href={appHref} class="btn-primary">Forge a New World</a>
         <a href="#codex" class="btn-ghost">Explore Sample Realm</a>
       </div>
     </div>

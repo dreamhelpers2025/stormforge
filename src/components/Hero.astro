@@ -1,5 +1,7 @@
 ---
 import Sigil from './Sigil.astro';
+const base = import.meta.env.BASE_URL;
+const appHref = `${base}app/`;
 ---
 <section class="relative overflow-hidden">
   <!-- storm cloud backdrop -->
@@ -79,7 +81,7 @@ import Sigil from './Sigil.astro';
       </p>
 
       <div class="mt-10 flex flex-wrap items-center gap-4">
-        <a href="#enter" class="btn-primary">Begin Your Chronicle</a>
+        <a href={appHref} class="btn-primary">Begin Your Chronicle</a>
         <a href="#codex" class="btn-ghost">Tour the Archive</a>
       </div>
 

@@ -1,6 +1,8 @@
 ---
 import Sigil from './Sigil.astro';
 import Icon from './Icon.astro';
+const base = import.meta.env.BASE_URL;
+const appHref = `${base}app/`;
 const links = [
   { label: 'Codex', href: '#codex' },
   { label: 'Dragons', href: '#dragons' },
@@ -39,7 +41,7 @@ const links = [
           class="bg-transparent outline-none text-sm text-silver placeholder:text-fog/50 flex-1 font-sans"
         />
       </div>
-      <a href="#enter" class="btn-primary !py-2 !px-4 text-[10px]">Enter Archive</a>
+      <a href={appHref} class="btn-primary !py-2 !px-4 text-[10px]">Enter Archive</a>
     </div>
   </div>
 </header>
