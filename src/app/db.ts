@@ -1,11 +1,13 @@
 import Dexie, { type Table } from 'dexie';
-import type { World, Article, ScratchpadNote, AppSettings } from './types';
+import type { World, Article, ScratchpadNote, AppSettings, MapData, ArticleRevision } from './types';
 
 class StormforgeDB extends Dexie {
   worlds!: Table<World, string>;
   articles!: Table<Article, string>;
   scratchpad!: Table<ScratchpadNote, string>;
   settings!: Table<AppSettings, string>;
+  maps!: Table<MapData, string>;
+  revisions!: Table<ArticleRevision, string>;
 
   constructor() {
     super('stormforge');
@@ -14,6 +16,15 @@ class StormforgeDB extends Dexie {
       articles: 'id, worldId, category, title, updatedAt, pinned, [worldId+category]',
       scratchpad: 'id, worldId, createdAt',
       settings: 'id',
+    });
+    // v2 adds maps + article revisions
+    this.version(2).stores({
+      worlds: 'id, name, updatedAt',
+      articles: 'id, worldId, category, title, updatedAt, pinned, [worldId+category]',
+      scratchpad: 'id, worldId, createdAt',
+      settings: 'id',
+      maps: 'id, worldId, updatedAt',
+      revisions: 'id, articleId, worldId, createdAt, [articleId+createdAt]',
     });
   }
 }

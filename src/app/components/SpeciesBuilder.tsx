@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { Article, SpeciesMeta, DietType, BehaviorPreset, CommunicationMode, RelationshipType } from '../types';
 import { TRAITS, TRAIT_MAP, TRAIT_CATEGORIES, WEAKNESSES } from '../lib/traits';
 import { ENVIRONMENTS, ENV_MAP } from '../lib/environments';
+import { generateMutation, applyMutation, simulateSurvival, type MutationEvent, type SimReport } from '../lib/evolution';
 import Icon from './Icon';
 
 interface Props {
@@ -65,6 +66,21 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
     relationships: article.meta?.relationships ?? [],
     silhouetteSeed: article.meta?.silhouetteSeed ?? 0,
   };
+  const mutations: MutationEvent[] = article.meta?.mutations ?? [];
+  const [simResult, setSimResult] = useState<SimReport | null>(null);
+
+  function rollMutation() {
+    const mut = generateMutation(m);
+    const nextMeta = applyMutation(m, mut);
+    onPatch({
+      ...nextMeta,
+      mutations: [...mutations, mut],
+    } as any);
+  }
+  function undoMutation(id: string) {
+    onPatch({ mutations: mutations.filter(x => x.id !== id) } as any);
+  }
+  function runSimulation() { setSimResult(simulateSurvival(m)); }
 
   const otherSpecies = useMemo(
     () => allArticles.filter(a => a.category === 'species' && a.id !== article.id),
@@ -114,11 +130,11 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
           <h2 className="text-display" style={{ fontSize: 18, marginTop: 4 }}>Forge their biology</h2>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-ghost" disabled title="Coming in Phase 2">
-            <Icon name="sparkles" size={13} /> Evolution Tree
+          <button className="btn btn-ghost" onClick={rollMutation} title="Generate a plausible mutation given current biology + environment">
+            <Icon name="sparkles" size={13} /> Trigger Mutation
           </button>
-          <button className="btn btn-ghost" disabled title="Coming in Phase 2">
-            <Icon name="lightning" size={13} /> Simulate
+          <button className="btn btn-primary" onClick={runSimulation} title="Run a heuristic survival simulation">
+            <Icon name="lightning" size={13} /> Simulate Survival
           </button>
         </div>
       </div>
@@ -336,6 +352,127 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
               </div>
             )}
           </section>
+
+          {/* Evolution Tree */}
+          <section>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div>
+                <div className="text-display" style={{ fontSize: 12, letterSpacing: '0.2em' }}>EVOLUTION TREE</div>
+                <div className="text-mute" style={{ fontSize: 11 }}>Branching mutations applied to this lineage.</div>
+              </div>
+              <button className="btn btn-ghost" onClick={rollMutation}>
+                <Icon name="sparkles" size={12} /> Trigger mutation
+              </button>
+            </div>
+            {mutations.length === 0 ? (
+              <div className="text-mute" style={{ fontSize: 13, fontStyle: 'italic' }}>
+                No mutations recorded yet. Click "Trigger Mutation" to evolve the lineage. Each mutation may add or lose traits and shift biology.
+              </div>
+            ) : (
+              <div style={{ position: 'relative', paddingLeft: 22 }}>
+                <div style={{ position: 'absolute', left: 8, top: 8, bottom: 8, width: 1, background: 'linear-gradient(to bottom, transparent, var(--accent), transparent)' }} />
+                {mutations.map((mut, i) => (
+                  <div key={mut.id} style={{ position: 'relative', marginBottom: 12 }}>
+                    <span style={{
+                      position: 'absolute', left: -19, top: 6, width: 10, height: 10, borderRadius: 99,
+                      background: 'var(--accent)', boxShadow: '0 0 8px var(--accent)',
+                    }} />
+                    <div className="sf-card" style={{ padding: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <div>
+                          <span className="text-eyebrow" style={{ color: 'var(--ember)' }}>Gen {i + 1} · {mut.era}</span>
+                        </div>
+                        <button className="btn btn-ghost btn-icon" title="Remove this mutation" onClick={() => undoMutation(mut.id)}>
+                          <Icon name="x" size={11} />
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 13.5, marginTop: 4, lineHeight: 1.5 }}>{mut.description}</div>
+                      {(mut.gainedTraits.length || mut.lostTraits.length) && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                          {mut.gainedTraits.map(k => (
+                            <span key={'+' + k} style={{ fontSize: 10.5, padding: '2px 6px', borderRadius: 999, background: 'rgba(110,208,153,0.15)', color: 'var(--success)', border: '1px solid rgba(110,208,153,0.35)' }}>
+                              +{TRAIT_MAP[k]?.label || k}
+                            </span>
+                          ))}
+                          {mut.lostTraits.map(k => (
+                            <span key={'-' + k} style={{ fontSize: 10.5, padding: '2px 6px', borderRadius: 999, background: 'rgba(217,122,122,0.12)', color: 'var(--danger)', border: '1px solid rgba(217,122,122,0.35)' }}>
+                              −{TRAIT_MAP[k]?.label || k}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Survival simulation */}
+          <section>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div>
+                <div className="text-display" style={{ fontSize: 12, letterSpacing: '0.2em' }}>SURVIVAL SIMULATION</div>
+                <div className="text-mute" style={{ fontSize: 11 }}>Run the species through their chosen environments and see what happens.</div>
+              </div>
+              <button className="btn btn-primary" onClick={runSimulation}>
+                <Icon name="lightning" size={12} /> Run sim
+              </button>
+            </div>
+            {!simResult ? (
+              <div className="text-mute" style={{ fontSize: 13, fontStyle: 'italic' }}>
+                No simulation yet. The sim checks environment fit, trait synergies, diet coherence, weaknesses, and relationships.
+              </div>
+            ) : (
+              <div className="sf-card" style={{ padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                  <div style={{
+                    width: 64, height: 64, borderRadius: '50%',
+                    background: `conic-gradient(${simColor(simResult.score)} ${simResult.score * 3.6}deg, var(--bg-elev-2) 0)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1px solid var(--border)',
+                  }}>
+                    <div style={{
+                      width: 50, height: 50, borderRadius: '50%', background: 'var(--bg-elev)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: 'Cinzel, serif', fontSize: 18,
+                    }}>
+                      {simResult.score}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div className="text-display" style={{ fontSize: 14, letterSpacing: '0.15em' }}>{simResult.verdict}</div>
+                    <div className="text-mute" style={{ fontSize: 12, marginTop: 2 }}>Niche: <strong>{simResult.niche}</strong></div>
+                  </div>
+                </div>
+
+                <PopulationChart trend={simResult.populationTrend} />
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <div>
+                    <div className="text-eyebrow" style={{ color: 'var(--success)' }}>Working for them</div>
+                    {simResult.pros.length === 0 ? (
+                      <div className="text-dim" style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>—</div>
+                    ) : (
+                      <ul style={{ paddingLeft: 16, margin: '4px 0 0', fontSize: 12.5, lineHeight: 1.55 }}>
+                        {simResult.pros.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-eyebrow" style={{ color: 'var(--danger)' }}>Working against them</div>
+                    {simResult.cons.length === 0 ? (
+                      <div className="text-dim" style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>—</div>
+                    ) : (
+                      <ul style={{ paddingLeft: 16, margin: '4px 0 0', fontSize: 12.5, lineHeight: 1.55 }}>
+                        {simResult.cons.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
 
         {/* Right column: silhouette + stats summary */}
@@ -497,6 +634,49 @@ function Silhouette({ seed, traits, environments, onReroll }: { seed: number; tr
         </svg>
       </div>
       <div className="text-dim" style={{ fontSize: 11, marginTop: 6, textAlign: 'center' }}>Generated from traits + seed</div>
+    </div>
+  );
+}
+
+function simColor(score: number): string {
+  if (score >= 80) return '#6ed099';
+  if (score >= 60) return '#43C7C7';
+  if (score >= 40) return '#B88A3B';
+  if (score >= 20) return '#d97a7a';
+  return '#B0413E';
+}
+
+function PopulationChart({ trend }: { trend: number[] }) {
+  const max = Math.max(1, ...trend);
+  const w = 100, h = 40;
+  const points = trend.map((v, i) => {
+    const x = (i / (trend.length - 1)) * w;
+    const y = h - (v / max) * (h - 4) - 2;
+    return `${x},${y}`;
+  }).join(' ');
+  const areaPoints = `0,${h} ${points} ${w},${h}`;
+  return (
+    <div>
+      <div className="text-eyebrow" style={{ marginBottom: 4 }}>Population over 10 generations</div>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ height: 60, display: 'block' }}>
+        <defs>
+          <linearGradient id="popGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#43C7C7" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#43C7C7" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={areaPoints} fill="url(#popGrad)" />
+        <polyline points={points} fill="none" stroke="#43C7C7" strokeWidth="0.8" />
+        {trend.map((v, i) => {
+          const x = (i / (trend.length - 1)) * w;
+          const y = h - (v / max) * (h - 4) - 2;
+          return <circle key={i} cx={x} cy={y} r="0.9" fill="#43C7C7" />;
+        })}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
+        <span>Gen 1: {trend[0]}</span>
+        <span>Gen 10: {trend[trend.length - 1]}</span>
+      </div>
     </div>
   );
 }

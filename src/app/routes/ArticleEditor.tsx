@@ -9,6 +9,10 @@ import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SpeciesBuilder from '../components/SpeciesBuilder';
+import MagicSystemBuilder from '../components/MagicSystemBuilder';
+import HistoryPanel from '../components/HistoryPanel';
+import Gallery from '../components/Gallery';
+import { articleWordCount } from '../lib/wordcount';
 import type { Article } from '../types';
 
 export default function ArticleEditor() {
@@ -24,6 +28,8 @@ export default function ArticleEditor() {
   const [draft, setDraft] = useState<Article | null>(null);
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
   const [imageInput] = useState(() => {
     const inp = document.createElement('input');
     inp.type = 'file';
@@ -152,7 +158,16 @@ export default function ArticleEditor() {
           value={draft.tags.join(', ')}
           onChange={e => patch('tags', e.target.value.split(',').map(t => t.trim()).filter(Boolean))}
         />
+        <button className="btn btn-ghost" onClick={() => setShowGallery(s => !s)}>
+          <Icon name="image" size={13} /> Gallery{(draft.gallery?.length ?? 0) > 0 ? ` (${draft.gallery?.length})` : ''}
+        </button>
+        <button className="btn btn-ghost" onClick={() => setShowHistory(true)} title="View history">
+          <Icon name="undo" size={13} /> History
+        </button>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }} title="Words in this article (content + summary)">
+            {articleWordCount(draft.contentText, draft.summary)} words
+          </span>
           <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
             {dirty ? 'Saving…' : `Saved ${new Date(article.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
           </span>
@@ -180,6 +195,23 @@ export default function ArticleEditor() {
           />
         </div>
       )}
+      {draft.category === 'magic_system' && (
+        <div style={{ marginBottom: 18 }}>
+          <MagicSystemBuilder
+            article={draft}
+            onPatch={(meta) => patch('meta', { ...(draft.meta ?? {}), ...meta })}
+          />
+        </div>
+      )}
+
+      {showGallery && (
+        <div style={{ marginBottom: 18 }}>
+          <Gallery
+            images={draft.gallery ?? []}
+            onChange={(g) => patch('gallery', g)}
+          />
+        </div>
+      )}
 
       <Editor
         key={draft.id}
@@ -191,6 +223,14 @@ export default function ArticleEditor() {
         }}
         onOpenArticle={(id) => navigate(`/w/${worldId}/articles/${id}`)}
       />
+
+      {showHistory && (
+        <HistoryPanel
+          article={draft}
+          onClose={() => setShowHistory(false)}
+          onRestored={() => setShowHistory(false)}
+        />
+      )}
 
       {confirmDelete && (
         <ConfirmDialog

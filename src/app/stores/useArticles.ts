@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import type { Article, ArticleCategory } from '../types';
 import { TEMPLATES } from '../lib/templates';
+import { snapshotIfDue, deleteRevisionsFor } from '../lib/revisions';
 
 /** Stable empty-array sentinel — required for React 18+ useSyncExternalStore
  *  selectors. Returning `[]` each render breaks reference equality and
@@ -63,6 +64,8 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
   update: async (id, patch) => {
     const cur = await db.articles.get(id);
     if (!cur) return;
+    // Snapshot the OLD state before mutating, on a throttle.
+    snapshotIfDue(cur).catch(() => {});
     const next: Article = { ...cur, ...patch, updatedAt: Date.now() };
     await db.articles.put(next);
     const list = (get().byWorld[next.worldId] ?? []).map(a => (a.id === id ? next : a));
@@ -74,6 +77,7 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
     const cur = await db.articles.get(id);
     if (!cur) return;
     await db.articles.delete(id);
+    deleteRevisionsFor(id).catch(() => {});
     const list = (get().byWorld[cur.worldId] ?? []).filter(a => a.id !== id);
     set({ byWorld: { ...get().byWorld, [cur.worldId]: list } });
   },

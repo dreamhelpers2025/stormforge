@@ -77,6 +77,9 @@ export default function Sidebar() {
             <NavLink to={`/w/${worldId}/articles`} end className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}>
               <Icon name="codex" size={15} /> All Articles
             </NavLink>
+            <NavLink to={`/w/${worldId}/maps`} className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}>
+              <Icon name="map" size={15} /> Maps
+            </NavLink>
             <NavLink to={`/w/${worldId}/scratchpad`} className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}>
               <Icon name="feather" size={15} /> Scratchpad
             </NavLink>

@@ -5,8 +5,11 @@ import { useArticles, EMPTY_ARTICLES } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
 import { CATEGORIES, CATEGORY_MAP, GROUPS } from '../lib/categories';
 import { randomPrompt } from '../lib/prompts';
+import { articleWordCount } from '../lib/wordcount';
+import { nanoid } from 'nanoid';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
+import type { WorldGoal } from '../types';
 
 export default function WorldHome() {
   const { worldId = '' } = useParams();
@@ -35,11 +38,33 @@ export default function WorldHome() {
   const stats = useMemo(() => {
     const out: { key: string; label: string; n: number; icon: any }[] = [];
     for (const c of CATEGORIES) {
-      const n = articles.filter(a => a.category === c.key).length;
+      const n = articles.filter((a: any) => a.category === c.key).length;
       if (n > 0) out.push({ key: c.key, label: c.plural, n, icon: c.icon });
     }
     return out;
   }, [articles]);
+
+  const totalWords = useMemo(
+    () => articles.reduce((sum: number, a: any) => sum + articleWordCount(a.contentText, a.summary), 0),
+    [articles]
+  );
+
+  const goal: WorldGoal = world?.goal ?? { wordTarget: 0, milestones: [] };
+  const wordPct = goal.wordTarget > 0 ? Math.min(100, Math.round((totalWords / goal.wordTarget) * 100)) : 0;
+
+  function patchGoal(g: Partial<WorldGoal>) {
+    if (!world) return;
+    updateWorld(world.id, { goal: { ...goal, ...g } });
+  }
+  function addMilestone(label: string) {
+    patchGoal({ milestones: [...goal.milestones, { id: nanoid(6), label: label.trim() || 'New milestone', done: false }] });
+  }
+  function toggleMilestone(id: string) {
+    patchGoal({ milestones: goal.milestones.map(m => m.id === id ? { ...m, done: !m.done } : m) });
+  }
+  function removeMilestone(id: string) {
+    patchGoal({ milestones: goal.milestones.filter(m => m.id !== id) });
+  }
 
   if (!world) {
     return <EmptyState title="World not found" description="It may have been erased. Return to the world list." />;
@@ -162,6 +187,16 @@ export default function WorldHome() {
             </div>
           </div>
 
+          <GoalCard
+            goal={goal}
+            totalWords={totalWords}
+            wordPct={wordPct}
+            onPatch={patchGoal}
+            onAddMilestone={addMilestone}
+            onToggleMilestone={toggleMilestone}
+            onRemoveMilestone={removeMilestone}
+          />
+
           <div className="sf-card" style={{ padding: 16 }}>
             <div className="text-eyebrow">Writing prompt</div>
             <div className="text-serif" style={{ fontStyle: 'italic', fontSize: 15, lineHeight: 1.55, color: 'var(--text)', margin: '8px 0 10px' }}>
@@ -173,9 +208,29 @@ export default function WorldHome() {
       </div>
 
       {/* Edit modal */}
+      {/* Total word count strip */}
+      {totalWords > 0 && (
+        <div className="sf-card" style={{ padding: 12, marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div className="text-mute" style={{ fontSize: 13 }}>
+            <strong className="text-display" style={{ color: 'var(--accent)', fontSize: 18, marginRight: 6 }}>{totalWords.toLocaleString()}</strong>
+            words written across this realm
+          </div>
+          {goal.wordTarget > 0 && (
+            <div style={{ flex: 1, minWidth: 160, maxWidth: 320, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, height: 6, background: 'var(--bg-elev-2)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{ width: `${wordPct}%`, height: '100%', background: 'var(--accent)', transition: 'width .35s' }} />
+              </div>
+              <div className="text-dim" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                {totalWords.toLocaleString()} / {goal.wordTarget.toLocaleString()} · {wordPct}%
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {editingMeta && (
         <div className="modal-backdrop" onClick={() => setEditingMeta(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(560px, 95vw)' }}>
+          <div className="modal" onClick={(e: any) => e.stopPropagation()} style={{ width: 'min(560px, 95vw)' }}>
             <div className="text-eyebrow">Edit realm</div>
             <h2 className="text-display" style={{ fontSize: 20, margin: '6px 0 16px' }}>{world.name}</h2>
             <div style={{ display: 'grid', gap: 10 }}>
@@ -219,6 +274,91 @@ export default function WorldHome() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function GoalCard({ goal, totalWords, wordPct, onPatch, onAddMilestone, onToggleMilestone, onRemoveMilestone }: {
+  goal: WorldGoal;
+  totalWords: number;
+  wordPct: number;
+  onPatch: (g: Partial<WorldGoal>) => void;
+  onAddMilestone: (label: string) => void;
+  onToggleMilestone: (id: string) => void;
+  onRemoveMilestone: (id: string) => void;
+}) {
+  const [draftMs, setDraftMs] = useState('');
+  const [editTarget, setEditTarget] = useState(false);
+  const [targetDraft, setTargetDraft] = useState<string>(String(goal.wordTarget || ''));
+
+  const done = goal.milestones.filter(m => m.done).length;
+
+  return (
+    <div className="sf-card" style={{ padding: 16 }}>
+      <div className="text-eyebrow">Goals & milestones</div>
+      <h3 className="text-display" style={{ fontSize: 14, letterSpacing: '0.15em', marginTop: 4 }}>
+        {totalWords.toLocaleString()} words · {done} / {goal.milestones.length || 0} milestones
+      </h3>
+
+      <div style={{ marginTop: 10 }}>
+        {!editTarget ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span className="text-mute" style={{ fontSize: 12 }}>
+              Word target: <strong>{goal.wordTarget ? goal.wordTarget.toLocaleString() : 'unset'}</strong>
+            </span>
+            <button className="btn btn-ghost" onClick={() => { setEditTarget(true); setTargetDraft(String(goal.wordTarget || '')); }}>
+              <Icon name="edit" size={11} /> {goal.wordTarget ? 'Edit' : 'Set'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              className="input" placeholder="e.g. 50000"
+              value={targetDraft}
+              onChange={e => setTargetDraft(e.target.value.replace(/[^\d]/g, ''))}
+              autoFocus
+              style={{ flex: 1 }}
+              onKeyDown={e => { if (e.key === 'Enter') { onPatch({ wordTarget: Number(targetDraft) || 0 }); setEditTarget(false); } if (e.key === 'Escape') setEditTarget(false); }}
+            />
+            <button className="btn btn-primary" onClick={() => { onPatch({ wordTarget: Number(targetDraft) || 0 }); setEditTarget(false); }}>Save</button>
+          </div>
+        )}
+      </div>
+
+      {goal.wordTarget > 0 && (
+        <div style={{ marginTop: 8, height: 6, background: 'var(--bg-elev-2)', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{ width: `${wordPct}%`, height: '100%', background: 'var(--accent)', transition: 'width .35s' }} />
+        </div>
+      )}
+
+      <div className="rune-divider-app" style={{ margin: '12px 0' }} />
+
+      <div className="text-mute" style={{ fontSize: 12, marginBottom: 6 }}>Milestones</div>
+      {goal.milestones.length === 0 && (
+        <div className="text-dim" style={{ fontSize: 12, fontStyle: 'italic', marginBottom: 8 }}>
+          None yet. Try: "Finish 3 species", "Draft history of the First Age".
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+        {goal.milestones.map(ms => (
+          <div key={ms.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="checkbox" checked={ms.done} onChange={() => onToggleMilestone(ms.id)} />
+            <span style={{ flex: 1, fontSize: 13, textDecoration: ms.done ? 'line-through' : 'none', color: ms.done ? 'var(--text-dim)' : 'var(--text)' }}>{ms.label}</span>
+            <button className="btn btn-ghost btn-icon" onClick={() => onRemoveMilestone(ms.id)}><Icon name="x" size={11} /></button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          className="input" placeholder="Add a milestone…" value={draftMs}
+          onChange={e => setDraftMs(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && draftMs.trim()) { onAddMilestone(draftMs); setDraftMs(''); } }}
+          style={{ flex: 1 }}
+        />
+        <button className="btn btn-ghost" disabled={!draftMs.trim()} onClick={() => { onAddMilestone(draftMs); setDraftMs(''); }}>
+          <Icon name="plus" size={12} />
+        </button>
+      </div>
     </div>
   );
 }

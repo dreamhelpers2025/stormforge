@@ -41,8 +41,15 @@ export interface World {
   coverGradient: string;      // CSS gradient
   themeAccent: WorldTheme;
   bannerEmoji: string;
+  goal?: WorldGoal;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface GalleryImage {
+  id: string;
+  dataUrl: string;
+  caption?: string;
 }
 
 export interface Article {
@@ -54,6 +61,7 @@ export interface Article {
   contentJson: any;            // Tiptap JSON
   contentText: string;         // flattened for search
   imageDataUrl?: string;       // base64 cover image
+  gallery?: GalleryImage[];    // additional images
   tags: string[];
   meta: Record<string, any>;   // category-specific structured data
   pinned: boolean;
@@ -83,6 +91,63 @@ export interface SpeciesMeta {
   language?: string;          // linked language articleId
   relationships: { speciesId: string; type: RelationshipType; note?: string }[];
   silhouetteSeed?: number;    // for visual randomizer
+}
+
+export type PinKind = 'capital' | 'city' | 'town' | 'ruin' | 'landmark' | 'dungeon' | 'battle' | 'lore' | 'roost' | 'shrine' | 'rift' | 'custom';
+
+export interface MapPin {
+  id: string;
+  x: number;            // 0-100 percent
+  y: number;            // 0-100 percent
+  label: string;
+  kind: PinKind;
+  color?: string;       // hex, optional override
+  articleId?: string;   // linked article
+  note?: string;
+}
+
+export interface MapRegion {
+  id: string;
+  label: string;
+  color: string;        // hex, used at low opacity
+  /** Polygon points as [x, y] in 0-100 percent coords. */
+  points: [number, number][];
+  factionArticleId?: string;
+  note?: string;
+}
+
+export interface MapData {
+  id: string;
+  worldId: string;
+  name: string;
+  description: string;
+  /** Optional background image (base64 data URL) or gradient string */
+  background: string;
+  /** If background is an image, declare its aspect ratio. Default 16/9. */
+  aspectRatio: number;
+  showGrid: boolean;
+  pins: MapPin[];
+  regions: MapRegion[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ArticleRevision {
+  id: string;            // composite: articleId + ':' + timestamp
+  articleId: string;
+  worldId: string;
+  title: string;
+  summary: string;
+  contentJson: any;
+  meta: Record<string, any>;
+  createdAt: number;
+}
+
+export interface WorldGoal {
+  /** Word-count goal across the world (0 = unset). */
+  wordTarget: number;
+  /** Milestones with optional check flag. */
+  milestones: { id: string; label: string; done: boolean }[];
 }
 
 export interface ScratchpadNote {

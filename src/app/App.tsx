@@ -13,6 +13,8 @@ import ArticleEditor from './routes/ArticleEditor';
 import Scratchpad from './routes/Scratchpad';
 import Prompts from './routes/Prompts';
 import AppSettings from './routes/AppSettings';
+import MapsList from './routes/MapsList';
+import MapEditor from './routes/MapEditor';
 
 import { useSettings } from './stores/useSettings';
 import { useWorlds } from './stores/useWorlds';
@@ -32,6 +34,8 @@ export default function App() {
           <Route path="/w/:worldId/articles" element={<WorldShell><ArticlesList /></WorldShell>} />
           <Route path="/w/:worldId/articles/:articleId" element={<WorldShell><ArticleEditor /></WorldShell>} />
           <Route path="/w/:worldId/category/:category" element={<WorldShell><CategoryRoute /></WorldShell>} />
+          <Route path="/w/:worldId/maps" element={<WorldShell><MapsList /></WorldShell>} />
+          <Route path="/w/:worldId/maps/:mapId" element={<WorldShell><MapEditor /></WorldShell>} />
           <Route path="/w/:worldId/scratchpad" element={<WorldShell><Scratchpad /></WorldShell>} />
           <Route path="/w/:worldId/prompts" element={<WorldShell><Prompts /></WorldShell>} />
           <Route path="*" element={<Navigate to="/worlds" replace />} />
