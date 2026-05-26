@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useArticles } from '../stores/useArticles';
+import { useArticles, EMPTY_ARTICLES } from '../stores/useArticles';
 import { useWorlds } from '../stores/useWorlds';
 import { CATEGORIES, CATEGORY_MAP } from '../lib/categories';
 import Icon from './Icon';
@@ -21,7 +21,7 @@ interface Item {
 export default function CommandPalette({ open, onClose }: Props) {
   const navigate = useNavigate();
   const { worldId } = useParams();
-  const articles = useArticles(s => (worldId ? s.byWorld[worldId] ?? [] : []));
+  const articles = useArticles(s => (worldId ? (s.byWorld[worldId] ?? EMPTY_ARTICLES) : EMPTY_ARTICLES)) as any;
   const worlds = useWorlds(s => s.worlds);
   const createArticle = useArticles(s => s.create);
 

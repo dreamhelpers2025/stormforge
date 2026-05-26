@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useArticles } from '../stores/useArticles';
+import { useArticles, EMPTY_ARTICLES } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
 import { useSettings } from '../stores/useSettings';
 import { CATEGORY_MAP } from '../lib/categories';
@@ -14,7 +14,7 @@ import type { Article } from '../types';
 export default function ArticleEditor() {
   const { worldId = '', articleId = '' } = useParams();
   const navigate = useNavigate();
-  const articles = useArticles(s => s.byWorld[worldId] ?? []);
+  const articles = useArticles(s => s.byWorld[worldId] ?? EMPTY_ARTICLES) as any;
   const updateArticle = useArticles(s => s.update);
   const removeArticle = useArticles(s => s.remove);
   const push = useToast(s => s.push);

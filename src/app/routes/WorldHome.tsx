@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useWorlds, WORLD_GRADIENTS } from '../stores/useWorlds';
-import { useArticles } from '../stores/useArticles';
+import { useArticles, EMPTY_ARTICLES } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
 import { CATEGORIES, CATEGORY_MAP, GROUPS } from '../lib/categories';
 import { randomPrompt } from '../lib/prompts';
@@ -13,7 +13,7 @@ export default function WorldHome() {
   const navigate = useNavigate();
   const worlds = useWorlds(s => s.worlds);
   const updateWorld = useWorlds(s => s.update);
-  const articles = useArticles(s => s.byWorld[worldId] ?? []);
+  const articles = useArticles(s => s.byWorld[worldId] ?? EMPTY_ARTICLES) as any;
   const createArticle = useArticles(s => s.create);
   const push = useToast(s => s.push);
 

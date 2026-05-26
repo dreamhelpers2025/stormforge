@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useArticles } from '../stores/useArticles';
+import { useArticles, EMPTY_ARTICLES } from '../stores/useArticles';
 import { CATEGORIES, CATEGORY_MAP } from '../lib/categories';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
@@ -13,7 +13,7 @@ interface Props {
 export default function ArticlesList({ category }: Props) {
   const { worldId = '' } = useParams();
   const navigate = useNavigate();
-  const articles = useArticles(s => s.byWorld[worldId] ?? []);
+  const articles = useArticles(s => s.byWorld[worldId] ?? EMPTY_ARTICLES) as any;
   const createArticle = useArticles(s => s.create);
 
   const [q, setQ] = useState('');

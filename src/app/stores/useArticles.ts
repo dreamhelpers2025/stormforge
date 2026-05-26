@@ -4,6 +4,11 @@ import { db } from '../db';
 import type { Article, ArticleCategory } from '../types';
 import { TEMPLATES } from '../lib/templates';
 
+/** Stable empty-array sentinel — required for React 18+ useSyncExternalStore
+ *  selectors. Returning `[]` each render breaks reference equality and
+ *  triggers "getSnapshot should be cached" / infinite re-renders. */
+export const EMPTY_ARTICLES: readonly Article[] = Object.freeze([]) as any;
+
 function makeEmptyDoc(category: ArticleCategory) {
   const sections = TEMPLATES[category] ?? [];
   const content: any[] = [];
