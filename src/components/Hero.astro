@@ -3,112 +3,633 @@ import Sigil from './Sigil.astro';
 const base = import.meta.env.BASE_URL;
 const appHref = `${base}app/`;
 ---
-<section class="relative overflow-hidden">
-  <!-- storm cloud backdrop -->
+<section class="relative overflow-hidden min-h-[100vh] flex items-center">
+  <!-- ===== Full-bleed cinematic backdrop ===== -->
   <div aria-hidden="true" class="absolute inset-0 -z-10">
-    <div class="absolute inset-0 bg-storm-veil"></div>
-    <!-- clouds -->
-    <div class="absolute inset-x-0 top-0 h-[70%] opacity-80">
-      <div class="absolute -top-20 -left-20 w-[80%] h-[60%] rounded-full blur-3xl bg-[#0e2030] animate-drift"></div>
-      <div class="absolute top-10 -right-32 w-[70%] h-[55%] rounded-full blur-3xl bg-[#102a3a] animate-drift" style="animation-delay:-9s"></div>
-      <div class="absolute top-32 left-1/3 w-[60%] h-[40%] rounded-full blur-3xl bg-[#0a1a26] animate-drift" style="animation-delay:-15s"></div>
-    </div>
-    <!-- jagged lightning bolt SVG -->
-    <svg class="absolute left-[18%] top-0 h-[80%] w-32 opacity-30 mix-blend-screen animate-flicker" viewBox="0 0 80 400" preserveAspectRatio="none" aria-hidden="true">
-      <path d="M40 0 L30 120 L48 130 L22 250 L46 260 L18 400" fill="none" stroke="#9ee5ec" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" filter="url(#bf)"/>
+    <svg
+      class="absolute inset-0 w-full h-full"
+      viewBox="0 0 1600 900"
+      preserveAspectRatio="xMidYMid slice"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <defs>
-        <filter id="bf" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3"/>
-        </filter>
-      </defs>
-    </svg>
-    <!-- mountains/silhouette ridge -->
-    <svg class="absolute bottom-0 left-0 w-full h-[40%]" viewBox="0 0 1440 400" preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="ridge" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="#0B1E2D" stop-opacity="0"/>
-          <stop offset="100%" stop-color="#050d14" stop-opacity="1"/>
+        <!-- ===== Gradients ===== -->
+        <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%"  stop-color="#0a1622"/>
+          <stop offset="35%" stop-color="#102538"/>
+          <stop offset="65%" stop-color="#143447"/>
+          <stop offset="100%" stop-color="#0e2738"/>
         </linearGradient>
-      </defs>
-      <path d="M0 280 L80 230 L160 260 L240 200 L320 240 L400 180 L480 230 L560 170 L640 220 L720 160 L800 210 L880 150 L960 200 L1040 140 L1120 200 L1200 160 L1280 220 L1360 180 L1440 240 L1440 400 L0 400 Z"
-            fill="url(#ridge)" opacity="0.9"/>
-      <path d="M0 320 L120 290 L240 320 L360 280 L480 310 L600 270 L720 310 L840 280 L960 320 L1080 290 L1200 320 L1320 290 L1440 320 L1440 400 L0 400 Z"
-            fill="#050d14"/>
-    </svg>
-    <!-- dragon silhouette in clouds -->
-    <svg class="absolute right-[-6%] bottom-[12%] w-[55%] max-w-[820px] opacity-90" viewBox="0 0 600 360" aria-hidden="true">
-      <defs>
-        <linearGradient id="dragonFill" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="#0a1a26"/>
-          <stop offset="60%" stop-color="#06121b"/>
+
+        <radialGradient id="moonGlow" cx="58%" cy="22%" r="38%">
+          <stop offset="0%"  stop-color="#a9d6dc" stop-opacity="0.55"/>
+          <stop offset="40%" stop-color="#5e9099" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="#102538" stop-opacity="0"/>
+        </radialGradient>
+
+        <radialGradient id="leftStormGlow" cx="22%" cy="20%" r="40%">
+          <stop offset="0%"  stop-color="#b7e3ea" stop-opacity="0.20"/>
+          <stop offset="100%" stop-color="#102538" stop-opacity="0"/>
+        </radialGradient>
+
+        <linearGradient id="seaGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%"  stop-color="#0e2738" stop-opacity="0.0"/>
+          <stop offset="15%" stop-color="#0c2030" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#05101a" stop-opacity="1"/>
+        </linearGradient>
+
+        <linearGradient id="mountFar" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#1d3a4d"/>
+          <stop offset="100%" stop-color="#0e2031"/>
+        </linearGradient>
+
+        <linearGradient id="mountMid" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#0f2435"/>
+          <stop offset="100%" stop-color="#07131c"/>
+        </linearGradient>
+
+        <linearGradient id="cliffDark" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#06101a"/>
           <stop offset="100%" stop-color="#020608"/>
         </linearGradient>
-        <linearGradient id="dragonEdge" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stop-color="#43C7C7" stop-opacity="0.7"/>
-          <stop offset="100%" stop-color="#1E7C86" stop-opacity="0.0"/>
+
+        <linearGradient id="dragonFill" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%"   stop-color="#0e2433"/>
+          <stop offset="55%"  stop-color="#07141e"/>
+          <stop offset="100%" stop-color="#020608"/>
         </linearGradient>
+
+        <linearGradient id="dragonRim" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stop-color="#43C7C7" stop-opacity="0"/>
+          <stop offset="60%" stop-color="#43C7C7" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="#9be6ec" stop-opacity="0.95"/>
+        </linearGradient>
+
+        <linearGradient id="castleStone" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#0c1c28"/>
+          <stop offset="100%" stop-color="#02080d"/>
+        </linearGradient>
+
+        <radialGradient id="windowGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffdfa2" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#b88a3b" stop-opacity="0.0"/>
+        </radialGradient>
+
+        <!-- ===== Filters ===== -->
+        <filter id="boltGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="6" result="b1"/>
+          <feMerge>
+            <feMergeNode in="b1"/>
+            <feMergeNode in="b1"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+
+        <filter id="boltSoft" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2"/>
+        </filter>
+
+        <filter id="cloudBlur" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="22"/>
+        </filter>
+
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="4"/>
+        </filter>
       </defs>
-      <!-- wing back -->
-      <path d="M120 60 C 60 140, 60 240, 180 280 L 240 220 C 200 200, 170 160, 170 120 Z" fill="url(#dragonFill)"/>
-      <!-- body -->
-      <path d="M180 280 C 260 320, 360 310, 430 250 C 500 200, 540 140, 560 60 L 510 70 C 470 130, 420 160, 360 170 C 300 180, 240 200, 200 240 Z" fill="url(#dragonFill)"/>
-      <!-- head/horns -->
-      <path d="M560 60 L 580 30 L 555 50 L 575 10 L 545 45 L 565 8 L 540 42 L 530 58 L 560 60 Z" fill="url(#dragonFill)"/>
-      <!-- eye glow -->
-      <circle cx="535" cy="58" r="2.5" fill="#43C7C7"/>
-      <circle cx="535" cy="58" r="5" fill="#43C7C7" opacity="0.25"/>
-      <!-- wing front w/ edge glow -->
-      <path d="M260 130 C 300 80, 380 60, 470 60 L 460 100 C 400 110, 340 140, 300 180 Z" fill="url(#dragonFill)"/>
-      <path d="M260 130 C 300 80, 380 60, 470 60" fill="none" stroke="url(#dragonEdge)" stroke-width="1.5"/>
-      <!-- tail -->
-      <path d="M180 280 C 130 300, 80 300, 40 280 L 70 270 C 110 280, 150 280, 180 270 Z" fill="url(#dragonFill)"/>
+
+      <!-- ===== Sky ===== -->
+      <rect x="0" y="0" width="1600" height="900" fill="url(#sky)"/>
+
+      <!-- subtle moon-like atmospheric glow behind clouds -->
+      <rect x="0" y="0" width="1600" height="900" fill="url(#moonGlow)"/>
+      <rect x="0" y="0" width="1600" height="900" fill="url(#leftStormGlow)"/>
+
+      <!-- ===== Faint stars ===== -->
+      <g fill="#d6e9ee" opacity="0.5">
+        <circle cx="160"  cy="120" r="0.9"/>
+        <circle cx="340"  cy="80"  r="0.6"/>
+        <circle cx="540"  cy="160" r="0.8"/>
+        <circle cx="900"  cy="100" r="0.6"/>
+        <circle cx="1100" cy="60"  r="1.0"/>
+        <circle cx="1280" cy="140" r="0.7"/>
+        <circle cx="1440" cy="90"  r="0.9"/>
+        <circle cx="1500" cy="200" r="0.5"/>
+        <circle cx="220"  cy="240" r="0.5"/>
+        <circle cx="780"  cy="220" r="0.5"/>
+      </g>
+
+      <!-- ===== Cloud bank (left, heavy) ===== -->
+      <g filter="url(#cloudBlur)" opacity="0.85">
+        <ellipse cx="280" cy="180"  rx="380" ry="120" fill="#0a1a26"/>
+        <ellipse cx="120" cy="240"  rx="320" ry="110" fill="#0e2030"/>
+        <ellipse cx="460" cy="120"  rx="260" ry="80"  fill="#08161f"/>
+        <ellipse cx="0"   cy="320"  rx="360" ry="120" fill="#0a1a26"/>
+      </g>
+
+      <!-- ===== Cloud bank (right, mid) ===== -->
+      <g filter="url(#cloudBlur)" opacity="0.7">
+        <ellipse cx="1200" cy="200"  rx="380" ry="110" fill="#0a1a26"/>
+        <ellipse cx="1480" cy="160"  rx="280" ry="90"  fill="#0e2030"/>
+        <ellipse cx="1000" cy="260"  rx="240" ry="70"  fill="#102438"/>
+      </g>
+
+      <!-- ===== Lightning — primary branching bolt above castle ===== -->
+      <g class="bolt-main" transform="translate(180,0)">
+        <!-- outer glow halo -->
+        <path
+          d="M 360 0
+             L 322 130
+             L 358 142
+             L 296 286
+             L 348 300
+             L 280 466
+             L 332 472
+             L 300 600"
+          fill="none" stroke="#9be6ec" stroke-opacity="0.55"
+          stroke-width="14" stroke-linecap="round" stroke-linejoin="round"
+          filter="url(#boltGlow)"
+        />
+        <!-- bright core -->
+        <path
+          d="M 360 0
+             L 322 130
+             L 358 142
+             L 296 286
+             L 348 300
+             L 280 466
+             L 332 472
+             L 300 600"
+          fill="none" stroke="#f3fbfd" stroke-opacity="0.95"
+          stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
+        />
+        <!-- branch -->
+        <path
+          d="M 296 286 L 240 320 L 268 332 L 222 410"
+          fill="none" stroke="#9be6ec" stroke-opacity="0.65"
+          stroke-width="6" stroke-linecap="round" stroke-linejoin="round"
+          filter="url(#boltGlow)"
+        />
+        <path
+          d="M 296 286 L 240 320 L 268 332 L 222 410"
+          fill="none" stroke="#f3fbfd" stroke-opacity="0.9"
+          stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+        />
+        <!-- second branch -->
+        <path
+          d="M 348 300 L 410 340 L 380 354 L 430 420"
+          fill="none" stroke="#9be6ec" stroke-opacity="0.5"
+          stroke-width="5" stroke-linecap="round" stroke-linejoin="round"
+          filter="url(#boltGlow)"
+        />
+        <path
+          d="M 348 300 L 410 340 L 380 354 L 430 420"
+          fill="none" stroke="#f3fbfd" stroke-opacity="0.85"
+          stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"
+        />
+      </g>
+
+      <!-- ===== Distant secondary bolts ===== -->
+      <g opacity="0.55">
+        <path d="M 80 30 L 70 110 L 92 122 L 60 220"
+              fill="none" stroke="#9be6ec" stroke-width="4" stroke-linecap="round" filter="url(#boltGlow)" opacity="0.5"/>
+        <path d="M 80 30 L 70 110 L 92 122 L 60 220"
+              fill="none" stroke="#f3fbfd" stroke-width="0.9" stroke-linecap="round"/>
+      </g>
+
+      <!-- ===== Far mountain range ===== -->
+      <path
+        d="M 0 560
+           L 80 510 L 160 540 L 240 490 L 320 530 L 400 480 L 480 520
+           L 560 470 L 640 510 L 720 460 L 800 500 L 880 460 L 960 500
+           L 1040 470 L 1120 510 L 1200 480 L 1280 520 L 1360 490 L 1440 530 L 1600 500
+           L 1600 900 L 0 900 Z"
+        fill="url(#mountFar)" opacity="0.85"
+      />
+
+      <!-- ===== Mid mountain range ===== -->
+      <path
+        d="M 0 640
+           L 90 600 L 200 640 L 300 590 L 420 640 L 540 600
+           L 680 650 L 820 600 L 960 660 L 1100 610 L 1240 660
+           L 1380 620 L 1520 670 L 1600 640
+           L 1600 900 L 0 900 Z"
+        fill="url(#mountMid)"
+      />
+
+      <!-- ===== Sea / fjord horizon ===== -->
+      <rect x="0" y="640" width="1600" height="260" fill="url(#seaGrad)" opacity="0.95"/>
+      <!-- water ripples (subtle horizontal lines) -->
+      <g stroke="#1a3a50" stroke-width="0.7" opacity="0.55">
+        <line x1="60"   y1="700" x2="1540" y2="700"/>
+        <line x1="200"  y1="730" x2="1400" y2="730"/>
+        <line x1="40"   y1="760" x2="1560" y2="760"/>
+        <line x1="120"  y1="790" x2="1480" y2="790"/>
+        <line x1="0"    y1="820" x2="1600" y2="820"/>
+      </g>
+      <!-- horizon haze -->
+      <rect x="0" y="630" width="1600" height="30" fill="#43C7C7" opacity="0.04" filter="url(#cloudBlur)"/>
+
+      <!-- ===== LEFT CLIFF + CASTLE ===== -->
+      <g transform="translate(180,0)">
+      <!-- distant cliff base sliver -->
+      <path
+        d="M 0 600 L 60 590 L 140 620 L 220 600 L 260 612 L 320 595 L 380 620 L 420 640
+           L 380 720 L 320 760 L 240 800 L 140 820 L 0 830 Z"
+        fill="url(#cliffDark)" opacity="0.92"
+      />
+      <!-- main castle cliff (rises from sea) -->
+      <path
+        d="M 90 540
+           L 130 510 L 180 525 L 220 500 L 260 530 L 320 510 L 360 540 L 400 530
+           L 430 560 L 440 600 L 430 650 L 450 700 L 430 760 L 380 800 L 320 830
+           L 220 845 L 120 840 L 60 820 L 30 780 L 20 720 L 40 660 L 60 600 Z"
+        fill="url(#cliffDark)"
+      />
+
+      <!-- ===== Castle on the cliff (silhouette w/ lit windows) ===== -->
+      <g class="castle">
+        <!-- back curtain wall -->
+        <rect x="160" y="420" width="220" height="110" fill="url(#castleStone)"/>
+        <!-- crenellations along back wall -->
+        <g fill="#03090e">
+          <rect x="170" y="408" width="14" height="14"/>
+          <rect x="194" y="408" width="14" height="14"/>
+          <rect x="218" y="408" width="14" height="14"/>
+          <rect x="242" y="408" width="14" height="14"/>
+          <rect x="266" y="408" width="14" height="14"/>
+          <rect x="290" y="408" width="14" height="14"/>
+          <rect x="314" y="408" width="14" height="14"/>
+          <rect x="338" y="408" width="14" height="14"/>
+          <rect x="362" y="408" width="14" height="14"/>
+        </g>
+
+        <!-- left tall tower -->
+        <rect x="148" y="330" width="42" height="200" fill="url(#castleStone)"/>
+        <polygon points="138,330 200,330 169,300" fill="#03090e"/>
+        <polygon points="142,304 196,304 169,272" fill="url(#castleStone)"/>
+        <polygon points="150,278 188,278 169,254" fill="#03090e"/>
+        <!-- flag -->
+        <line x1="169" y1="254" x2="169" y2="216" stroke="#0a1620" stroke-width="1.4"/>
+        <path d="M 169 220 L 192 226 L 169 232 Z" fill="#1f5760"/>
+
+        <!-- main keep -->
+        <rect x="226" y="350" width="80" height="180" fill="url(#castleStone)"/>
+        <polygon points="218,350 314,350 266,310" fill="#03090e"/>
+        <!-- keep crenellations -->
+        <g fill="#03090e">
+          <rect x="232" y="342" width="10" height="10"/>
+          <rect x="248" y="342" width="10" height="10"/>
+          <rect x="264" y="342" width="10" height="10"/>
+          <rect x="280" y="342" width="10" height="10"/>
+          <rect x="296" y="342" width="10" height="10"/>
+        </g>
+
+        <!-- right tower (shorter, fatter) -->
+        <rect x="324" y="370" width="50" height="160" fill="url(#castleStone)"/>
+        <polygon points="316,370 382,370 349,338" fill="#03090e"/>
+        <polygon points="324,346 374,346 349,318" fill="url(#castleStone)"/>
+
+        <!-- side small tower -->
+        <rect x="104" y="400" width="28" height="130" fill="url(#castleStone)"/>
+        <polygon points="98,400 138,400 118,378" fill="#03090e"/>
+
+        <!-- bridge between tall tower and keep -->
+        <rect x="190" y="404" width="36" height="14" fill="#03090e"/>
+
+        <!-- glowing arched windows (warm amber) -->
+        <g>
+          <!-- left tall tower windows -->
+          <ellipse cx="169" cy="370" rx="12" ry="14" fill="url(#windowGlow)"/>
+          <rect x="165" y="368" width="8" height="12" rx="3" fill="#ffcf72"/>
+          <ellipse cx="169" cy="408" rx="10" ry="12" fill="url(#windowGlow)"/>
+          <rect x="166" y="406" width="6" height="10" rx="2.5" fill="#ffcf72"/>
+          <ellipse cx="169" cy="446" rx="9" ry="11" fill="url(#windowGlow)"/>
+          <rect x="166" y="444" width="6" height="9" rx="2.5" fill="#ffcf72"/>
+          <ellipse cx="169" cy="482" rx="9" ry="11" fill="url(#windowGlow)" opacity="0.9"/>
+          <rect x="166" y="480" width="6" height="9" rx="2.5" fill="#ffcf72" opacity="0.9"/>
+
+          <!-- keep windows (3 columns x 4 rows) -->
+          <g>
+            <rect x="240" y="376" width="6" height="10" rx="2.5" fill="#ffcf72"/>
+            <rect x="263" y="376" width="6" height="10" rx="2.5" fill="#ffcf72"/>
+            <rect x="286" y="376" width="6" height="10" rx="2.5" fill="#ffcf72"/>
+            <rect x="240" y="408" width="6" height="10" rx="2.5" fill="#ffcf72" opacity="0.85"/>
+            <rect x="263" y="408" width="6" height="10" rx="2.5" fill="#ffcf72"/>
+            <rect x="286" y="408" width="6" height="10" rx="2.5" fill="#ffcf72" opacity="0.65"/>
+            <rect x="240" y="438" width="6" height="10" rx="2.5" fill="#ffcf72" opacity="0.7"/>
+            <rect x="263" y="438" width="6" height="10" rx="2.5" fill="#ffcf72"/>
+            <rect x="286" y="438" width="6" height="10" rx="2.5" fill="#ffcf72" opacity="0.5"/>
+            <rect x="252" y="470" width="14" height="20" rx="6" fill="#ffcf72"/>
+            <rect x="276" y="470" width="14" height="20" rx="6" fill="#ffcf72" opacity="0.8"/>
+          </g>
+
+          <!-- right tower windows -->
+          <ellipse cx="349" cy="396" rx="10" ry="12" fill="url(#windowGlow)"/>
+          <rect x="346" y="394" width="6" height="10" rx="2.5" fill="#ffcf72"/>
+          <ellipse cx="349" cy="430" rx="9" ry="11" fill="url(#windowGlow)" opacity="0.85"/>
+          <rect x="346" y="428" width="6" height="10" rx="2.5" fill="#ffcf72" opacity="0.85"/>
+          <ellipse cx="349" cy="464" rx="9" ry="11" fill="url(#windowGlow)" opacity="0.6"/>
+          <rect x="346" y="462" width="6" height="10" rx="2.5" fill="#ffcf72" opacity="0.6"/>
+
+          <!-- small side tower window -->
+          <rect x="115" y="430" width="6" height="10" rx="2.5" fill="#ffcf72" opacity="0.85"/>
+        </g>
+
+        <!-- warm halo cast over castle -->
+        <ellipse cx="266" cy="430" rx="170" ry="80" fill="#b88a3b" opacity="0.06" filter="url(#cloudBlur)"/>
+      </g>
+
+      <!-- ===== Reflection of castle in water (subtle) ===== -->
+      <g opacity="0.18" transform="translate(180, 1080) scale(1,-1)" style="mix-blend-mode:screen">
+        <rect x="160" y="420" width="220" height="110" fill="#43C7C7"/>
+        <rect x="226" y="350" width="80" height="180" fill="#43C7C7"/>
+        <rect x="148" y="330" width="42" height="200" fill="#43C7C7"/>
+      </g>
+      </g><!-- /castle+cliff transform group -->
+
+      <!-- ===== RIGHT CLIFF + DRAGON ===== -->
+      <g transform="translate(-180,0)">
+      <!-- jagged cliff/spire the dragon perches on -->
+      <path
+        d="M 1080 640
+           L 1130 600 L 1180 615 L 1220 595 L 1260 610 L 1310 590 L 1360 615 L 1420 600
+           L 1480 620 L 1530 605 L 1580 625 L 1600 620
+           L 1600 900 L 1080 900 Z"
+        fill="url(#cliffDark)"
+      />
+      <!-- secondary front spire (more dramatic) -->
+      <path
+        d="M 1180 540
+           L 1230 510 L 1260 535 L 1290 500 L 1330 530 L 1370 510 L 1410 545
+           L 1440 600 L 1420 660 L 1380 720 L 1320 760 L 1240 790 L 1160 800
+           L 1100 780 L 1080 720 L 1100 660 L 1140 600 Z"
+        fill="url(#cliffDark)"
+      />
+
+      <!-- ===== Dragon ===== -->
+      <g class="dragon">
+        <!-- back wing (folded behind body) -->
+        <path
+          d="M 1330 360
+             C 1280 320, 1240 320, 1210 360
+             C 1230 350, 1260 360, 1280 380
+             C 1260 400, 1240 430, 1235 460
+             L 1300 470
+             C 1295 430, 1310 395, 1330 360 Z"
+          fill="url(#dragonFill)"
+        />
+
+        <!-- main body curve, tail wrapped around the spire -->
+        <path
+          d="M 1480 360
+             C 1500 350, 1520 360, 1540 380
+             C 1560 405, 1560 440, 1545 470
+             C 1530 500, 1510 525, 1480 540
+             C 1450 555, 1410 555, 1380 540
+             C 1350 525, 1330 500, 1320 470
+             C 1310 440, 1320 410, 1340 385
+             C 1360 360, 1390 350, 1420 350
+             C 1400 358, 1390 380, 1395 405
+             L 1430 405
+             C 1435 385, 1455 365, 1480 360 Z"
+          fill="url(#dragonFill)"
+        />
+
+        <!-- tail curving down and around -->
+        <path
+          d="M 1390 540
+             C 1370 580, 1320 610, 1260 615
+             C 1300 610, 1340 600, 1370 580
+             C 1370 600, 1360 625, 1340 640
+             C 1310 660, 1270 660, 1245 645
+             C 1260 650, 1285 645, 1300 632
+             C 1280 640, 1255 638, 1240 625
+             L 1245 600
+             C 1260 615, 1285 615, 1305 605
+             C 1280 612, 1255 608, 1238 595 Z"
+          fill="url(#dragonFill)"
+        />
+
+        <!-- front wing (folded against body, edge highlight) -->
+        <path
+          d="M 1410 360
+             C 1370 320, 1320 310, 1290 335
+             C 1300 330, 1330 332, 1355 345
+             C 1340 358, 1325 380, 1320 405
+             C 1340 380, 1370 365, 1410 360 Z"
+          fill="url(#dragonFill)"
+        />
+        <!-- wing rim glow -->
+        <path
+          d="M 1410 360 C 1370 320, 1320 310, 1290 335"
+          fill="none" stroke="url(#dragonRim)" stroke-width="2.4" stroke-linecap="round"
+          opacity="0.85"
+        />
+
+        <!-- neck arching forward -->
+        <path
+          d="M 1450 360
+             C 1450 330, 1465 305, 1490 295
+             C 1515 285, 1545 290, 1560 310
+             C 1545 305, 1525 308, 1510 320
+             C 1495 335, 1485 355, 1485 380
+             C 1475 375, 1462 372, 1450 360 Z"
+          fill="url(#dragonFill)"
+        />
+
+        <!-- head with horns and glowing eye -->
+        <path
+          d="M 1560 310
+             C 1582 308, 1602 318, 1610 332
+             L 1602 340
+             C 1612 348, 1610 360, 1598 366
+             L 1580 358
+             C 1572 366, 1556 366, 1548 358
+             C 1538 348, 1538 332, 1548 322
+             C 1552 316, 1556 312, 1560 310 Z"
+          fill="url(#dragonFill)"
+        />
+        <!-- snout extension / open mouth hint -->
+        <path
+          d="M 1602 340 L 1622 344 L 1612 354 L 1602 348 Z"
+          fill="url(#dragonFill)"
+        />
+        <!-- horns -->
+        <path d="M 1556 314 C 1548 296, 1542 282, 1538 264 L 1546 272 L 1552 286 L 1558 300" fill="none" stroke="#0a1620" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M 1580 308 C 1576 290, 1572 274, 1572 258 L 1578 268 L 1582 282 L 1584 298" fill="none" stroke="#0a1620" stroke-width="2.4" stroke-linecap="round"/>
+
+        <!-- jaw line + teeth hint -->
+        <path d="M 1576 354 L 1600 358 L 1612 354" fill="none" stroke="#0a1620" stroke-width="1.2"/>
+
+        <!-- glowing eye -->
+        <circle cx="1576" cy="328" r="8" fill="#43C7C7" opacity="0.25"/>
+        <circle cx="1576" cy="328" r="3.4" fill="#9be6ec"/>
+        <circle cx="1576" cy="328" r="1.5" fill="#ffffff"/>
+
+        <!-- chest rim glow (catches "lightning" from the left) -->
+        <path
+          d="M 1400 460
+             C 1420 480, 1440 488, 1470 488
+             C 1500 486, 1520 472, 1530 452"
+          fill="none" stroke="url(#dragonRim)" stroke-width="2.2" stroke-linecap="round"
+          opacity="0.6"
+        />
+
+        <!-- talons gripping the rock -->
+        <g fill="#02080d">
+          <path d="M 1400 552 L 1395 575 L 1390 552"/>
+          <path d="M 1420 555 L 1415 580 L 1410 555"/>
+          <path d="M 1440 555 L 1435 578 L 1430 555"/>
+          <path d="M 1462 552 L 1457 575 L 1452 552"/>
+          <path d="M 1485 548 L 1482 572 L 1478 548"/>
+        </g>
+
+        <!-- subtle ambient teal underglow from below (sea reflection) -->
+        <ellipse cx="1440" cy="555" rx="180" ry="20" fill="#43C7C7" opacity="0.07" filter="url(#cloudBlur)"/>
+      </g>
+      </g><!-- /right cliff + dragon transform group -->
+
+      <!-- ===== Front sea silhouette (deep dark band) ===== -->
+      <path
+        d="M 0 820 L 1600 820 L 1600 900 L 0 900 Z"
+        fill="#020608" opacity="0.85"
+      />
+
+      <!-- ===== Vignette ===== -->
+      <radialGradient id="vignette" cx="50%" cy="55%" r="75%">
+        <stop offset="55%" stop-color="#000" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#000" stop-opacity="0.65"/>
+      </radialGradient>
+      <rect x="0" y="0" width="1600" height="900" fill="url(#vignette)"/>
+
+      <!-- ===== Drifting embers / particles ===== -->
+      <g class="embers" fill="#43C7C7">
+        <circle cx="700" cy="780" r="1.2" opacity="0.7"/>
+        <circle cx="820" cy="730" r="1"   opacity="0.5"/>
+        <circle cx="940" cy="800" r="1.4" opacity="0.7"/>
+        <circle cx="600" cy="700" r="1"   opacity="0.6"/>
+        <circle cx="1080" cy="740" r="1.1" opacity="0.5"/>
+        <circle cx="500" cy="760" r="1"   opacity="0.5"/>
+      </g>
     </svg>
+
+    <!-- Lightning flash overlay (CSS-animated) -->
+    <div class="lightning-flash absolute inset-0 pointer-events-none"></div>
+
+    <!-- Drifting CSS particles on top -->
+    <div class="absolute inset-0 pointer-events-none">
+      {Array.from({ length: 16 }).map((_, i) => (
+        <span
+          class="ember-drift"
+          style={`left:${(i * 6.2) % 100}%; top:${55 + ((i * 11) % 35)}%; animation-delay:${(i * 1.1) % 14}s;`}
+        ></span>
+      ))}
+    </div>
   </div>
 
-  <div class="max-w-7xl mx-auto px-6 lg:px-10 pt-20 pb-32 lg:pt-28 lg:pb-44 relative">
-    <div class="max-w-3xl">
-      <div class="flex items-center gap-3 mb-6">
+  <!-- ===== Foreground content ===== -->
+  <div class="relative max-w-7xl mx-auto px-6 lg:px-10 py-24 lg:py-32 w-full">
+    <div class="text-center max-w-4xl mx-auto">
+      <div class="flex items-center justify-center gap-3 mb-7">
         <span class="rule-flourish">Vol. I — The Living Codex</span>
       </div>
-      <h1 class="font-display text-5xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tight text-silver">
-        Forge Kingdoms.
-        <span class="block text-dragonfire glow-text italic font-serif">Archive Legends.</span>
+      <h1 class="font-display text-5xl md:text-7xl lg:text-[88px] leading-[0.98] tracking-tight text-silver glow-text">
+        Build Your World.
+        <span class="block text-dragonfire italic font-serif font-medium mt-2">Share Your Legend.</span>
       </h1>
-      <p class="mt-8 max-w-xl text-fog/90 text-lg leading-relaxed font-sans">
+      <p class="mt-8 mx-auto max-w-2xl text-fog/90 text-lg leading-relaxed font-sans">
         Stormforge is a cinematic worldbuilding archive for fantasy creators —
-        organize lore, dragons, kingdoms, religions, and timelines inside a
-        single immersive codex that feels worthy of the stories it holds.
+        organize lore, dragons, kingdoms, religions, and timelines inside a single
+        immersive codex that feels worthy of the stories it holds.
       </p>
 
-      <div class="mt-10 flex flex-wrap items-center gap-4">
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
         <a href={appHref} class="btn-primary">Begin Your Chronicle</a>
         <a href="#codex" class="btn-ghost">Tour the Archive</a>
       </div>
 
-      <!-- stat strip -->
-      <div class="mt-14 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl">
+      <!-- ornamental compass divider -->
+      <div class="mt-14 flex items-center justify-center gap-4 text-ember/70">
+        <span class="h-px w-20 bg-gradient-to-r from-transparent via-ember/60 to-transparent"></span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 4 L13.5 11 L20 12 L13.5 13 L12 20 L10.5 13 L4 12 L10.5 11 Z" fill="currentColor" opacity="0.85"/>
+        </svg>
+        <span class="h-px w-20 bg-gradient-to-r from-transparent via-ember/60 to-transparent"></span>
+      </div>
+
+      <!-- stat strip beneath flourish -->
+      <div class="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
         {[
-          { k: '14', l: 'Lore Categories' },
+          { k: '23', l: 'Lore Categories' },
           { k: '∞', l: 'Realms Forged' },
-          { k: '7', l: 'Elemental Dragon Houses' },
-          { k: '1', l: 'Archive That Endures' },
+          { k: '7', l: 'Dragon Houses' },
+          { k: '1', l: 'Living Codex' },
         ].map((s) => (
-          <div class="border-l border-storm/40 pl-4">
+          <div class="px-2">
             <div class="font-display text-3xl text-dragonfire">{s.k}</div>
             <div class="font-sans text-[11px] tracking-[0.25em] uppercase text-fog/70 mt-1">{s.l}</div>
           </div>
         ))}
       </div>
     </div>
-
-    <!-- floating sigil -->
-    <div class="hidden lg:block absolute right-10 top-24 animate-pulseGlow rounded-full">
-      <Sigil size={180} class="text-dragonfire opacity-90" />
-    </div>
   </div>
 
   <!-- bottom rune divider -->
-  <div class="max-w-6xl mx-auto px-6">
+  <div class="relative max-w-6xl mx-auto px-6 -mt-2">
     <div class="rune-divider"></div>
   </div>
 </section>
+
+<style>
+  /* Lightning flash — sudden brightening every few seconds */
+  @keyframes lightningFlash {
+    0%, 92%, 100% { opacity: 0; }
+    93%           { opacity: 0.45; }
+    94%           { opacity: 0.05; }
+    95%           { opacity: 0.55; }
+    96%           { opacity: 0.0; }
+    97%           { opacity: 0.2; }
+    98%           { opacity: 0.0; }
+  }
+  .lightning-flash {
+    background: radial-gradient(ellipse at 22% 25%, rgba(180, 230, 240, 0.6) 0%, transparent 60%);
+    animation: lightningFlash 8.5s ease-in-out infinite;
+    mix-blend-mode: screen;
+  }
+
+  /* Subtle pulse on the bolt itself */
+  @keyframes boltPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.78; }
+  }
+  .bolt-main {
+    animation: boltPulse 3.4s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  /* Dragon eye breathing */
+  @keyframes eyePulse {
+    0%, 100% { filter: drop-shadow(0 0 6px rgba(67,199,199,0.6)); }
+    50%      { filter: drop-shadow(0 0 16px rgba(67,199,199,1)); }
+  }
+  .dragon { animation: eyePulse 4s ease-in-out infinite; }
+
+  /* Drifting embers */
+  .ember-drift {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: rgba(67,199,199,0.75);
+    border-radius: 9999px;
+    filter: blur(0.5px);
+    animation: emberFloat 22s linear infinite;
+    opacity: 0;
+  }
+  @keyframes emberFloat {
+    0%   { transform: translateY(20px); opacity: 0; }
+    15%  { opacity: 0.65; }
+    85%  { opacity: 0.4; }
+    100% { transform: translateY(-260px); opacity: 0; }
+  }
+</style>
