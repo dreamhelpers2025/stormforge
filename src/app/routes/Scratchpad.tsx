@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { useArticles } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
+import * as cloud from '../lib/cloudSync';
 import type { ScratchpadNote } from '../types';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
@@ -28,11 +29,13 @@ export default function Scratchpad() {
     await db.scratchpad.put(note);
     setNotes(n => [note, ...n]);
     setDraft('');
+    cloud.upsertNote(note);
   }
 
   async function remove(id: string) {
     await db.scratchpad.delete(id);
     setNotes(n => n.filter(x => x.id !== id));
+    cloud.deleteNote(id);
   }
 
   async function promote(note: ScratchpadNote) {

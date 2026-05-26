@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import Icon from './Icon';
 import Sigil from './Sigil';
+import AuthButton from './AuthButton';
+import SyncIndicator from './SyncIndicator';
 import { useWorlds } from '../stores/useWorlds';
 import { useSettings } from '../stores/useSettings';
 import { CATEGORIES, GROUPS } from '../lib/categories';
@@ -127,19 +129,23 @@ export default function Sidebar() {
       )}
 
       {/* Footer */}
-      <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', padding: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
-        <button
-          className="btn btn-ghost btn-icon"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          title={`Switch to ${theme === 'dark' ? 'parchment' : 'tempest'} theme`}
-        >
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
-        </button>
-        <NavLink to="/settings" className={({ isActive }) => 'btn btn-ghost btn-icon' + (isActive ? ' active' : '')} title="Settings">
-          <Icon name="settings" size={15} />
-        </NavLink>
-        <div style={{ flex: 1, textAlign: 'right', fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.2em' }}>
-          VOL · I
+      <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <AuthButton />
+        <SyncIndicator />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            className="btn btn-ghost btn-icon"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={`Switch to ${theme === 'dark' ? 'parchment' : 'tempest'} theme`}
+          >
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={15} />
+          </button>
+          <NavLink to="/settings" className={({ isActive }) => 'btn btn-ghost btn-icon' + (isActive ? ' active' : '')} title="Settings">
+            <Icon name="settings" size={15} />
+          </NavLink>
+          <div style={{ flex: 1, textAlign: 'right', fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.2em' }}>
+            VOL · I
+          </div>
         </div>
       </div>
     </aside>

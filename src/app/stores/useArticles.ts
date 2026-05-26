@@ -4,6 +4,7 @@ import { db } from '../db';
 import type { Article, ArticleCategory } from '../types';
 import { TEMPLATES } from '../lib/templates';
 import { snapshotIfDue, deleteRevisionsFor } from '../lib/revisions';
+import * as cloud from '../lib/cloudSync';
 
 /** Stable empty-array sentinel — required for React 18+ useSyncExternalStore
  *  selectors. Returning `[]` each render breaks reference equality and
@@ -59,6 +60,7 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
     await db.articles.put(a);
     const cur = get().byWorld[worldId] ?? [];
     set({ byWorld: { ...get().byWorld, [worldId]: [a, ...cur] } });
+    cloud.upsertArticle(a);
     return a;
   },
   update: async (id, patch) => {
@@ -71,6 +73,7 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
     const list = (get().byWorld[next.worldId] ?? []).map(a => (a.id === id ? next : a));
     list.sort((a, b) => b.updatedAt - a.updatedAt);
     set({ byWorld: { ...get().byWorld, [next.worldId]: list } });
+    cloud.upsertArticle(next);
     return next;
   },
   remove: async (id) => {
@@ -80,6 +83,7 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
     deleteRevisionsFor(id).catch(() => {});
     const list = (get().byWorld[cur.worldId] ?? []).filter(a => a.id !== id);
     set({ byWorld: { ...get().byWorld, [cur.worldId]: list } });
+    cloud.deleteArticle(id);
   },
   search: (worldId, q) => {
     const all = get().byWorld[worldId] ?? [];

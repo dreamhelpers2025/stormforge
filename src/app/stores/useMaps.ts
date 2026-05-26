@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import * as cloud from '../lib/cloudSync';
 import type { MapData } from '../types';
 
 export const EMPTY_MAPS: readonly MapData[] = Object.freeze([]) as any;
@@ -45,6 +46,7 @@ export const useMaps = create<MapsStore>((set, get) => ({
     await db.maps.put(m);
     const cur = get().byWorld[worldId] ?? [];
     set({ byWorld: { ...get().byWorld, [worldId]: [m, ...cur] } });
+    cloud.upsertMap(m);
     return m;
   },
   update: async (id, patch) => {
@@ -55,6 +57,7 @@ export const useMaps = create<MapsStore>((set, get) => ({
     const list = (get().byWorld[next.worldId] ?? []).map(m => (m.id === id ? next : m));
     list.sort((a, b) => b.updatedAt - a.updatedAt);
     set({ byWorld: { ...get().byWorld, [next.worldId]: list } });
+    cloud.upsertMap(next);
     return next;
   },
   remove: async (id) => {
@@ -63,5 +66,6 @@ export const useMaps = create<MapsStore>((set, get) => ({
     await db.maps.delete(id);
     const list = (get().byWorld[cur.worldId] ?? []).filter(m => m.id !== id);
     set({ byWorld: { ...get().byWorld, [cur.worldId]: list } });
+    cloud.deleteMap(id);
   },
 }));

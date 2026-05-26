@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import type { GalleryImage } from '../types';
+import { compressFile } from '../lib/imageCompress';
 import Icon from './Icon';
 
 interface Props {
@@ -12,15 +13,16 @@ export default function Gallery({ images, onChange }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox] = useState<number | null>(null);
 
-  function handleAdd(files: FileList | null) {
+  async function handleAdd(files: FileList | null) {
     if (!files || !files.length) return;
-    const readers = Array.from(files).map(file => new Promise<GalleryImage>((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve({ id: nanoid(8), dataUrl: r.result as string, caption: file.name });
-      r.onerror = reject;
-      r.readAsDataURL(file);
-    }));
-    Promise.all(readers).then(next => onChange([...images, ...next]));
+    const compressed = await Promise.all(
+      Array.from(files).map(async file => ({
+        id: nanoid(8),
+        dataUrl: await compressFile(file, 1600, 0.82),
+        caption: file.name,
+      }))
+    );
+    onChange([...images, ...compressed]);
   }
 
   function updateCaption(id: string, caption: string) {

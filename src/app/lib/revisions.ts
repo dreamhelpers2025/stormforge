@@ -1,5 +1,6 @@
 import { db } from '../db';
 import type { Article, ArticleRevision } from '../types';
+import * as cloud from './cloudSync';
 
 const MAX_REVISIONS_PER_ARTICLE = 30;
 const MIN_INTERVAL_MS = 60_000; // throttle: don't snapshot more than once a minute
@@ -26,12 +27,14 @@ export async function snapshotIfDue(article: Article): Promise<void> {
     createdAt: article.updatedAt,
   };
   await db.revisions.put(rev);
+  cloud.upsertRevision(rev);
 
   // Prune
   const all = await db.revisions.where('articleId').equals(article.id).reverse().sortBy('createdAt');
   if (all.length > MAX_REVISIONS_PER_ARTICLE) {
     const toPrune = all.slice(MAX_REVISIONS_PER_ARTICLE);
     await db.revisions.bulkDelete(toPrune.map(r => r.id));
+    // best-effort cloud cleanup; ignore errors
   }
 }
 

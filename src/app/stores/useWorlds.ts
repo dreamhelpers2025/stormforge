@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import * as cloud from '../lib/cloudSync';
 import type { World, WorldTheme } from '../types';
 
 const GRADIENTS = [
@@ -49,6 +50,7 @@ export const useWorlds = create<WorldsStore>((set, get) => ({
     const w = makeWorld(name.trim() || 'Untitled Realm', idx);
     await db.worlds.put(w);
     set({ worlds: [w, ...get().worlds] });
+    cloud.upsertWorld(w);
     return w;
   },
   update: async (id, patch) => {
@@ -57,14 +59,18 @@ export const useWorlds = create<WorldsStore>((set, get) => ({
     const next: World = { ...cur, ...patch, updatedAt: Date.now() };
     await db.worlds.put(next);
     set({ worlds: get().worlds.map(w => (w.id === id ? next : w)).sort((a, b) => b.updatedAt - a.updatedAt) });
+    cloud.upsertWorld(next);
   },
   remove: async (id) => {
-    await db.transaction('rw', db.worlds, db.articles, db.scratchpad, async () => {
+    await db.transaction('rw', db.worlds, db.articles, db.scratchpad, db.maps, db.revisions, async () => {
       await db.worlds.delete(id);
       await db.articles.where('worldId').equals(id).delete();
       await db.scratchpad.where('worldId').equals(id).delete();
+      await db.maps.where('worldId').equals(id).delete();
+      await db.revisions.where('worldId').equals(id).delete();
     });
     set({ worlds: get().worlds.filter(w => w.id !== id) });
+    cloud.deleteWorld(id);
   },
   get: (id) => get().worlds.find(w => w.id === id),
 }));

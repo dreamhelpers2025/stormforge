@@ -13,6 +13,7 @@ import MagicSystemBuilder from '../components/MagicSystemBuilder';
 import HistoryPanel from '../components/HistoryPanel';
 import Gallery from '../components/Gallery';
 import { articleWordCount } from '../lib/wordcount';
+import { compressFile } from '../lib/imageCompress';
 import type { Article } from '../types';
 
 export default function ArticleEditor() {
@@ -99,12 +100,11 @@ export default function ArticleEditor() {
 
   function chooseImage() {
     imageInput.value = '';
-    imageInput.onchange = () => {
+    imageInput.onchange = async () => {
       const file = imageInput.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => patch('imageDataUrl', reader.result as string);
-      reader.readAsDataURL(file);
+      const compressed = await compressFile(file, 1600, 0.82);
+      patch('imageDataUrl', compressed);
     };
     imageInput.click();
   }

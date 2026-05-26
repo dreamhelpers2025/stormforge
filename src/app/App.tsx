@@ -19,6 +19,9 @@ import MapEditor from './routes/MapEditor';
 import { useSettings } from './stores/useSettings';
 import { useWorlds } from './stores/useWorlds';
 import { useArticles } from './stores/useArticles';
+import { useAuth } from './stores/useAuth';
+import { useSync } from './stores/useSync';
+import { reconcileAll, resync, setCurrentUser } from './lib/cloudSync';
 import { CATEGORY_MAP } from './lib/categories';
 import type { ArticleCategory } from './types';
 
@@ -50,13 +53,46 @@ export default function App() {
 function Bootstrap({ children }: { children: React.ReactNode }) {
   const hydrateSettings = useSettings(s => s.hydrate);
   const hydrateWorlds = useWorlds(s => s.hydrate);
+  const hydrateAuth = useAuth(s => s.hydrate);
+  const user = useAuth(s => s.user);
   const [ready, setReady] = useState(false);
+
+  // Initial hydrate: settings, worlds, auth — in parallel
   useEffect(() => {
     (async () => {
-      await Promise.all([hydrateSettings(), hydrateWorlds()]);
+      await Promise.all([hydrateSettings(), hydrateWorlds(), hydrateAuth()]);
       setReady(true);
     })();
-  }, [hydrateSettings, hydrateWorlds]);
+  }, [hydrateSettings, hydrateWorlds, hydrateAuth]);
+
+  // React to auth state: when a user signs in, reconcile cloud + local.
+  useEffect(() => {
+    if (!ready) return;
+    if (user) {
+      setCurrentUser(user.id);
+      reconcileAll(user.id).catch(() => {});
+    } else {
+      setCurrentUser(null);
+    }
+  }, [user, ready]);
+
+  // Listen for online/offline transitions
+  useEffect(() => {
+    function onOnline() {
+      useSync.getState().set({ state: 'idle' });
+      resync();
+    }
+    function onOffline() {
+      useSync.getState().set({ state: 'offline' });
+    }
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
   if (!ready) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-mute)' }}>

@@ -8,6 +8,7 @@ import { CATEGORY_MAP } from '../lib/categories';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { compressImageDataUrl, fileToDataUrl } from '../lib/imageCompress';
 import type { MapData, MapPin, MapRegion, PinKind, Article } from '../types';
 
 const PIN_KINDS: { key: PinKind; label: string; emoji: string; color: string }[] = [
@@ -167,16 +168,16 @@ export default function MapEditor() {
     setSelectedRegion(null);
   }
 
-  function onUploadBg(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        patchMap({ background: reader.result as string, aspectRatio: img.width / img.height });
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
+  async function onUploadBg(file: File) {
+    // Get aspect ratio from the raw image, then store a compressed JPEG.
+    const raw = await fileToDataUrl(file);
+    const img = new Image();
+    img.src = raw;
+    await new Promise<void>((res) => { img.onload = () => res(); });
+    const aspect = img.width / img.height;
+    // Maps are bigger — allow 2400px on longest edge
+    const compressed = await compressImageDataUrl(raw, 2400, 0.85);
+    patchMap({ background: compressed, aspectRatio: aspect });
   }
 
   const selPin = map.pins.find(p => p.id === selectedPin);

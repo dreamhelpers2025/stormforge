@@ -5,6 +5,7 @@ import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { WikiLink } from './WikiLinkExtension';
+import { compressFile } from '../lib/imageCompress';
 import Icon from './Icon';
 import type { Article } from '../types';
 
@@ -87,11 +88,8 @@ export default function Editor({ initialJson, articlesIndex, onChange, onOpenArt
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file || !editor) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        editor.chain().focus().setImage({ src: reader.result as string, alt: file.name }).run();
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressFile(file, 1600, 0.82);
+      editor.chain().focus().setImage({ src: compressed, alt: file.name }).run();
     };
     input.click();
   }
