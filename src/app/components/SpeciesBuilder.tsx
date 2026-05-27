@@ -3,12 +3,14 @@ import type { Article, SpeciesMeta, DietType, BehaviorPreset, CommunicationMode,
 import { TRAITS, TRAIT_MAP, TRAIT_CATEGORIES, WEAKNESSES } from '../lib/traits';
 import { ENVIRONMENTS, ENV_MAP } from '../lib/environments';
 import { generateMutation, applyMutation, simulateSurvival, type MutationEvent, type SimReport } from '../lib/evolution';
+import { compressFile } from '../lib/imageCompress';
 import Icon from './Icon';
 
 interface Props {
   article: Article;
   allArticles: Article[];
   onPatch: (meta: Partial<SpeciesMeta>) => void;
+  onPatchArticle?: (patch: Partial<Article>) => void;
 }
 
 const DIETS: { key: DietType; label: string; emoji: string }[] = [
@@ -51,7 +53,7 @@ const RELATIONSHIPS: { key: RelationshipType; label: string; color: string }[] =
   { key: 'mutualist',  label: 'Mutualist with', color: '#6ed099' },
 ];
 
-export default function SpeciesBuilder({ article, allArticles, onPatch }: Props) {
+export default function SpeciesBuilder({ article, allArticles, onPatch, onPatchArticle }: Props) {
   const m: SpeciesMeta = {
     size: article.meta?.size ?? 40,
     lifespan: article.meta?.lifespan ?? 50,
@@ -163,6 +165,21 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
                   <span>{env.emoji}</span> {env.label}
                 </span>
               ))}
+              {m.environments.filter(e => !ENV_MAP[e]).map(e => (
+                <span
+                  key={'custom-env-' + e}
+                  className="chip selected"
+                  style={{ borderStyle: 'dashed' }}
+                  onClick={() => onPatch({ environments: m.environments.filter(x => x !== e) })}
+                  title="Custom environment (click to remove)"
+                >
+                  🌐 {e} <Icon name="x" size={9} />
+                </span>
+              ))}
+              <CustomChipAdder
+                placeholder="Custom environment…"
+                onAdd={(v) => { if (!m.environments.includes(v)) onPatch({ environments: [...m.environments, v] }); }}
+              />
             </div>
           </section>
 
@@ -196,6 +213,21 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
                   {b.label}
                 </span>
               ))}
+              {m.behavior.filter(b => !BEHAVIORS.some(B => B.key === b)).map(b => (
+                <span
+                  key={'custom-bh-' + b}
+                  className="chip selected"
+                  style={{ borderStyle: 'dashed' }}
+                  onClick={() => onPatch({ behavior: m.behavior.filter(x => x !== b) })}
+                  title="Custom behavior (click to remove)"
+                >
+                  {b} <Icon name="x" size={9} />
+                </span>
+              ))}
+              <CustomChipAdder
+                placeholder="Custom behavior…"
+                onAdd={(v) => { if (!m.behavior.includes(v as any)) onPatch({ behavior: [...m.behavior, v as any] }); }}
+              />
             </div>
           </section>
 
@@ -212,6 +244,21 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
                   <span>{c.emoji}</span> {c.label}
                 </span>
               ))}
+              {m.communication.filter(c => !COMMS.some(C => C.key === c)).map(c => (
+                <span
+                  key={'custom-cm-' + c}
+                  className="chip selected"
+                  style={{ borderStyle: 'dashed' }}
+                  onClick={() => onPatch({ communication: m.communication.filter(x => x !== c) })}
+                  title="Custom communication (click to remove)"
+                >
+                  {c} <Icon name="x" size={9} />
+                </span>
+              ))}
+              <CustomChipAdder
+                placeholder="Custom communication…"
+                onAdd={(v) => { if (!m.communication.includes(v as any)) onPatch({ communication: [...m.communication, v as any] }); }}
+              />
             </div>
           </section>
 
@@ -276,18 +323,40 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
           {/* Weaknesses */}
           <section>
             <div className="text-display" style={{ fontSize: 12, letterSpacing: '0.2em', marginBottom: 8 }}>WEAKNESSES <span className="text-dim" style={{ fontSize: 10, letterSpacing: 0, textTransform: 'none' }}>— forced tradeoffs for balance</span></div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {WEAKNESSES.map(w => (
-                <span
-                  key={w}
-                  className={`chip${m.weaknesses.includes(w) ? ' selected' : ''}`}
-                  onClick={() => onPatch({ weaknesses: toggleArr(m.weaknesses, w) })}
-                >
-                  {w}
-                </span>
-              ))}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {(() => {
+                const predefined = new Set(WEAKNESSES);
+                const customs = m.weaknesses.filter(w => !predefined.has(w));
+                return (
+                  <>
+                    {WEAKNESSES.map(w => (
+                      <span
+                        key={w}
+                        className={`chip${m.weaknesses.includes(w) ? ' selected' : ''}`}
+                        onClick={() => onPatch({ weaknesses: toggleArr(m.weaknesses, w) })}
+                      >
+                        {w}
+                      </span>
+                    ))}
+                    {customs.map(w => (
+                      <span
+                        key={'custom-' + w}
+                        className="chip selected"
+                        onClick={() => onPatch({ weaknesses: m.weaknesses.filter(x => x !== w) })}
+                        title="Custom weakness (click to remove)"
+                        style={{ borderStyle: 'dashed' }}
+                      >
+                        {w} <Icon name="x" size={9} />
+                      </span>
+                    ))}
+                    <CustomChipAdder
+                      placeholder="Custom weakness…"
+                      onAdd={(w) => { if (!m.weaknesses.includes(w)) onPatch({ weaknesses: [...m.weaknesses, w] }); }}
+                    />
+                  </>
+                );
+              })()}
             </div>
-            <CustomWeaknessAdder current={m.weaknesses} onAdd={(w) => onPatch({ weaknesses: [...m.weaknesses, w] })} />
           </section>
 
           {/* Relationship web */}
@@ -475,9 +544,20 @@ export default function SpeciesBuilder({ article, allArticles, onPatch }: Props)
           </section>
         </div>
 
-        {/* Right column: silhouette + stats summary */}
+        {/* Right column: image/silhouette + stats summary */}
         <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 70 }}>
-          <Silhouette seed={m.silhouetteSeed ?? 0} traits={m.traits} environments={m.environments} onReroll={() => onPatch({ silhouetteSeed: Math.floor(Math.random() * 1_000_000) })} />
+          <SpeciesVisual
+            imageDataUrl={article.imageDataUrl}
+            seed={m.silhouetteSeed ?? 0}
+            traits={m.traits}
+            environments={m.environments}
+            onReroll={() => onPatch({ silhouetteSeed: Math.floor(Math.random() * 1_000_000) })}
+            onUploadImage={onPatchArticle ? async (file) => {
+              const compressed = await compressFile(file, 1600, 0.85);
+              onPatchArticle({ imageDataUrl: compressed });
+            } : undefined}
+            onClearImage={onPatchArticle ? () => onPatchArticle({ imageDataUrl: undefined as any }) : undefined}
+          />
 
           <div className="sf-card" style={{ padding: 12 }}>
             <div className="text-eyebrow">Summary</div>
@@ -529,32 +609,151 @@ function Sliders({ m, setSlider }: { m: SpeciesMeta; setSlider: (k: keyof Specie
   );
 }
 
-function CustomWeaknessAdder({ current, onAdd }: { current: string[]; onAdd: (w: string) => void }) {
+function CustomChipAdder({ onAdd, placeholder = 'Custom…' }: { onAdd: (v: string) => void; placeholder?: string }) {
+  const [editing, setEditing] = useState(false);
   const [v, setV] = useState('');
+  if (!editing) {
+    return (
+      <span
+        className="chip"
+        onClick={() => setEditing(true)}
+        style={{ borderStyle: 'dashed', color: 'var(--text-mute)' }}
+        title="Add a custom option"
+      >
+        <Icon name="plus" size={10} /> Custom
+      </span>
+    );
+  }
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
+    <span className="chip" style={{ padding: '2px 8px', borderColor: 'var(--accent)', minWidth: 0 }}>
       <input
-        className="input"
-        style={{ flex: 1 }}
-        placeholder="Add custom weakness…"
+        autoFocus
         value={v}
         onChange={e => setV(e.target.value)}
+        onBlur={() => {
+          if (v.trim()) onAdd(v.trim());
+          setEditing(false);
+          setV('');
+        }}
         onKeyDown={e => {
-          if (e.key === 'Enter' && v.trim() && !current.includes(v.trim())) {
-            onAdd(v.trim());
+          if (e.key === 'Enter') {
+            if (v.trim()) onAdd(v.trim());
+            setEditing(false);
+            setV('');
+          }
+          if (e.key === 'Escape') {
+            setEditing(false);
             setV('');
           }
         }}
+        placeholder={placeholder}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          color: 'var(--text)',
+          fontSize: 12,
+          width: 130,
+        }}
       />
-      <button className="btn btn-ghost" onClick={() => {
-        if (v.trim() && !current.includes(v.trim())) { onAdd(v.trim()); setV(''); }
-      }}>Add</button>
+    </span>
+  );
+}
+
+/** Wrapper that shows uploaded image if present, else procedural silhouette. */
+function SpeciesVisual({
+  imageDataUrl,
+  seed,
+  traits,
+  environments,
+  onReroll,
+  onUploadImage,
+  onClearImage,
+}: {
+  imageDataUrl?: string;
+  seed: number;
+  traits: string[];
+  environments: string[];
+  onReroll: () => void;
+  onUploadImage?: (file: File) => void;
+  onClearImage?: () => void;
+}) {
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  if (imageDataUrl) {
+    return (
+      <div className="sf-card" style={{ padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div className="text-eyebrow">Species image</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {onUploadImage && (
+              <button className="btn btn-ghost btn-icon" title="Replace image" onClick={() => fileRef.current?.click()}>
+                <Icon name="edit" size={13} />
+              </button>
+            )}
+            {onClearImage && (
+              <button className="btn btn-ghost btn-icon" title="Remove image (show silhouette)" onClick={onClearImage}>
+                <Icon name="x" size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+        <div
+          style={{
+            aspectRatio: '1 / 1',
+            background: `url(${imageDataUrl}) center/cover`,
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+          }}
+        />
+        {onUploadImage && (
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) onUploadImage(f); e.target.value = ''; }}
+          />
+        )}
+        <div className="text-dim" style={{ fontSize: 11, marginTop: 6, textAlign: 'center' }}>
+          Also used as the article cover
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="sf-card" style={{ padding: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div className="text-eyebrow">Silhouette</div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {onUploadImage && (
+            <button className="btn btn-ghost btn-icon" title="Upload species image" onClick={() => fileRef.current?.click()}>
+              <Icon name="image" size={13} />
+            </button>
+          )}
+          <button className="btn btn-ghost btn-icon" title="Reroll silhouette" onClick={onReroll}>
+            <Icon name="sparkles" size={13} />
+          </button>
+        </div>
+      </div>
+      <SilhouetteCanvas seed={seed} traits={traits} environments={environments} />
+      {onUploadImage && (
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) onUploadImage(f); e.target.value = ''; }}
+        />
+      )}
+      <div className="text-dim" style={{ fontSize: 11, marginTop: 6, textAlign: 'center' }}>
+        Procedural from traits — upload an image to replace
+      </div>
     </div>
   );
 }
 
 /** Procedurally generated silhouette based on seed + selected traits. */
-function Silhouette({ seed, traits, environments, onReroll }: { seed: number; traits: string[]; environments: string[]; onReroll: () => void }) {
+function SilhouetteCanvas({ seed, traits, environments }: { seed: number; traits: string[]; environments: string[] }) {
   // Deterministic PRNG from seed
   function rand(n: number) {
     let x = (seed + n * 9301 + 49297) % 233280;
@@ -585,55 +784,39 @@ function Silhouette({ seed, traits, environments, onReroll }: { seed: number; tr
   }
 
   return (
-    <div className="sf-card" style={{ padding: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div className="text-eyebrow">Silhouette</div>
-        <button className="btn btn-ghost btn-icon" title="Reroll" onClick={onReroll}>
-          <Icon name="sparkles" size={13} />
-        </button>
-      </div>
-      <div className="silhouette-frame">
-        <svg width="100%" height="100%" viewBox="0 0 120 120">
-          <defs>
-            <radialGradient id="sgGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor={colA} stopOpacity={glow ? 0.6 : 0.0} />
-              <stop offset="100%" stopColor={colA} stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          {glow && <circle cx={cx} cy={cy} r="40" fill="url(#sgGlow)" />}
-          {/* tail */}
-          {hasTail && (
-            <path d={`M ${cx - bodyW * 0.8} ${cy} Q ${cx - bodyW * 1.4} ${cy + 8} ${cx - bodyW * 1.6} ${cy + 14}`} stroke={colA} strokeWidth="3" fill="none" strokeLinecap="round" />
-          )}
-          {/* body */}
-          <ellipse cx={cx} cy={cy} rx={bodyW} ry={bodyH} fill={colA} opacity="0.85" />
-          {/* head */}
-          <circle cx={cx + bodyW * 0.8} cy={cy - bodyH * 0.2} r={bodyH * 0.55} fill={colA} />
-          {/* eye */}
-          <circle cx={cx + bodyW * 0.95} cy={cy - bodyH * 0.3} r="2" fill={glow ? '#43C7C7' : '#fff'} />
-          {/* horns */}
-          {hasHorns && (
-            <>
-              <path d={`M ${cx + bodyW * 0.6} ${cy - bodyH * 0.6} l 4 -10`} stroke={colA} strokeWidth="2" strokeLinecap="round" />
-              <path d={`M ${cx + bodyW * 0.85} ${cy - bodyH * 0.7} l 3 -12`} stroke={colA} strokeWidth="2" strokeLinecap="round" />
-            </>
-          )}
-          {/* wings */}
-          {hasWings && (
-            <>
-              <path d={`M ${cx} ${cy - bodyH * 0.8} Q ${cx - 30} ${cy - bodyH * 2.0} ${cx - 22} ${cy + 4}`} fill={colA} fillOpacity="0.4" />
-              <path d={`M ${cx} ${cy - bodyH * 0.8} Q ${cx + 30} ${cy - bodyH * 2.0} ${cx + 22} ${cy + 4}`} fill={colA} fillOpacity="0.4" />
-            </>
-          )}
-          {/* fins (back) */}
-          {hasFins && !hasWings && (
-            <path d={`M ${cx - 6} ${cy - bodyH} q 6 -12 12 0`} fill={colA} fillOpacity="0.55" />
-          )}
-          {/* legs (only if not full aquatic) */}
-          {!hasFins && legs}
-        </svg>
-      </div>
-      <div className="text-dim" style={{ fontSize: 11, marginTop: 6, textAlign: 'center' }}>Generated from traits + seed</div>
+    <div className="silhouette-frame">
+      <svg width="100%" height="100%" viewBox="0 0 120 120">
+        <defs>
+          <radialGradient id="sgGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={colA} stopOpacity={glow ? 0.6 : 0.0} />
+            <stop offset="100%" stopColor={colA} stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        {glow && <circle cx={cx} cy={cy} r="40" fill="url(#sgGlow)" />}
+        {/* tail */}
+        {hasTail && (
+          <path d={`M ${cx - bodyW * 0.8} ${cy} Q ${cx - bodyW * 1.4} ${cy + 8} ${cx - bodyW * 1.6} ${cy + 14}`} stroke={colA} strokeWidth="3" fill="none" strokeLinecap="round" />
+        )}
+        <ellipse cx={cx} cy={cy} rx={bodyW} ry={bodyH} fill={colA} opacity="0.85" />
+        <circle cx={cx + bodyW * 0.8} cy={cy - bodyH * 0.2} r={bodyH * 0.55} fill={colA} />
+        <circle cx={cx + bodyW * 0.95} cy={cy - bodyH * 0.3} r="2" fill={glow ? '#43C7C7' : '#fff'} />
+        {hasHorns && (
+          <>
+            <path d={`M ${cx + bodyW * 0.6} ${cy - bodyH * 0.6} l 4 -10`} stroke={colA} strokeWidth="2" strokeLinecap="round" />
+            <path d={`M ${cx + bodyW * 0.85} ${cy - bodyH * 0.7} l 3 -12`} stroke={colA} strokeWidth="2" strokeLinecap="round" />
+          </>
+        )}
+        {hasWings && (
+          <>
+            <path d={`M ${cx} ${cy - bodyH * 0.8} Q ${cx - 30} ${cy - bodyH * 2.0} ${cx - 22} ${cy + 4}`} fill={colA} fillOpacity="0.4" />
+            <path d={`M ${cx} ${cy - bodyH * 0.8} Q ${cx + 30} ${cy - bodyH * 2.0} ${cx + 22} ${cy + 4}`} fill={colA} fillOpacity="0.4" />
+          </>
+        )}
+        {hasFins && !hasWings && (
+          <path d={`M ${cx - 6} ${cy - bodyH} q 6 -12 12 0`} fill={colA} fillOpacity="0.55" />
+        )}
+        {!hasFins && legs}
+      </svg>
     </div>
   );
 }

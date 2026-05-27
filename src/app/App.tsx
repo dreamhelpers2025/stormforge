@@ -15,11 +15,13 @@ import Prompts from './routes/Prompts';
 import AppSettings from './routes/AppSettings';
 import MapsList from './routes/MapsList';
 import MapEditor from './routes/MapEditor';
+import Profile from './routes/Profile';
 
 import { useSettings } from './stores/useSettings';
 import { useWorlds } from './stores/useWorlds';
 import { useArticles } from './stores/useArticles';
 import { useAuth } from './stores/useAuth';
+import { useProfile } from './stores/useProfile';
 import { useSync } from './stores/useSync';
 import { reconcileAll, resync, setCurrentUser } from './lib/cloudSync';
 import { CATEGORY_MAP } from './lib/categories';
@@ -33,6 +35,7 @@ export default function App() {
           <Route path="/" element={<EntryRedirect />} />
           <Route path="/worlds" element={<Shell><WorldPicker /></Shell>} />
           <Route path="/settings" element={<Shell><AppSettings /></Shell>} />
+          <Route path="/profile" element={<Shell><Profile /></Shell>} />
           <Route path="/w/:worldId" element={<WorldShell><WorldHome /></WorldShell>} />
           <Route path="/w/:worldId/articles" element={<WorldShell><ArticlesList /></WorldShell>} />
           <Route path="/w/:worldId/articles/:articleId" element={<WorldShell><ArticleEditor /></WorldShell>} />
@@ -65,12 +68,13 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
     })();
   }, [hydrateSettings, hydrateWorlds, hydrateAuth]);
 
-  // React to auth state: when a user signs in, reconcile cloud + local.
+  // React to auth state: when a user signs in, reconcile cloud + local + hydrate profile.
   useEffect(() => {
     if (!ready) return;
     if (user) {
       setCurrentUser(user.id);
       reconcileAll(user.id).catch(() => {});
+      useProfile.getState().hydrate().catch(() => {});
     } else {
       setCurrentUser(null);
     }

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/useAuth';
+import { useProfile, usernameFromEmail } from '../stores/useProfile';
 import { useToast } from '../stores/useToast';
 import Icon from './Icon';
 
@@ -8,7 +10,9 @@ export default function AuthButton() {
   const signOut = useAuth(s => s.signOut);
   const signIn = useAuth(s => s.signInWithEmail);
   const signingIn = useAuth(s => s.signingIn);
+  const profile = useProfile(s => s.profile);
   const push = useToast(s => s.push);
+  const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
@@ -25,30 +29,55 @@ export default function AuthButton() {
   }
 
   if (user) {
+    const username = usernameFromEmail(user.email);
+    const display = profile.displayName || username;
+    const initial = (display[0] ?? 'U').toUpperCase();
     return (
       <div style={{ position: 'relative' }}>
         <button
           className="btn btn-ghost"
-          style={{ width: '100%', justifyContent: 'flex-start', fontSize: 12 }}
+          style={{ width: '100%', justifyContent: 'flex-start', fontSize: 12, gap: 8 }}
           onClick={() => setOpen(o => !o)}
           title="Account"
         >
-          <span style={{
-            width: 24, height: 24, borderRadius: 99, background: 'var(--accent-2)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-            fontSize: 11, fontFamily: 'Cinzel, serif',
-          }}>
-            {(user.email?.[0] ?? 'U').toUpperCase()}
-          </span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
-            {user.email}
-          </span>
+          {profile.avatarDataUrl ? (
+            <span style={{
+              width: 26, height: 26, borderRadius: 99,
+              background: `url(${profile.avatarDataUrl}) center/cover`,
+              flexShrink: 0,
+              border: '1px solid var(--border)',
+            }} />
+          ) : (
+            <span style={{
+              width: 26, height: 26, borderRadius: 99,
+              background: profile.accent || 'var(--accent-2)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+              fontSize: 11, fontFamily: 'Cinzel, serif', flexShrink: 0,
+            }}>
+              {initial}
+            </span>
+          )}
+          <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12.5, color: 'var(--text)' }}>
+              {display}
+            </div>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 10, color: 'var(--text-dim)' }}>
+              @{username}
+            </div>
+          </div>
           <Icon name="chevron-down" size={12} />
         </button>
         {open && (
           <>
             <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
             <div className="sf-card" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 41, padding: 6 }}>
+              <button
+                className="btn btn-ghost"
+                style={{ width: '100%', justifyContent: 'flex-start' }}
+                onClick={() => { navigate('/profile'); setOpen(false); }}
+              >
+                <Icon name="user" size={13} /> Profile
+              </button>
               <button
                 className="btn btn-ghost"
                 style={{ width: '100%', justifyContent: 'flex-start' }}

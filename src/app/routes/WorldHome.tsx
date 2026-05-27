@@ -6,6 +6,7 @@ import { useToast } from '../stores/useToast';
 import { CATEGORIES, CATEGORY_MAP, GROUPS } from '../lib/categories';
 import { randomPrompt } from '../lib/prompts';
 import { articleWordCount } from '../lib/wordcount';
+import { compressFile } from '../lib/imageCompress';
 import { nanoid } from 'nanoid';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
@@ -23,7 +24,7 @@ export default function WorldHome() {
   const world = worlds.find(w => w.id === worldId);
   const [editingMeta, setEditingMeta] = useState(false);
   const [meta, setMeta] = useState({ name: '', tagline: '', description: '', bannerEmoji: '', coverGradient: '' });
-  const [prompt] = useState(() => randomPrompt());
+  const [prompt, setPrompt] = useState(() => randomPrompt());
 
   useEffect(() => {
     if (world) setMeta({
@@ -198,11 +199,19 @@ export default function WorldHome() {
           />
 
           <div className="sf-card" style={{ padding: 16 }}>
-            <div className="text-eyebrow">Writing prompt</div>
-            <div className="text-serif" style={{ fontStyle: 'italic', fontSize: 15, lineHeight: 1.55, color: 'var(--text)', margin: '8px 0 10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="text-eyebrow">Today's prompt</div>
+              <button
+                className="btn btn-ghost btn-icon"
+                onClick={() => setPrompt(randomPrompt())}
+                title="Show another prompt"
+              >
+                <Icon name="sparkles" size={13} />
+              </button>
+            </div>
+            <div className="text-serif" style={{ fontStyle: 'italic', fontSize: 15, lineHeight: 1.55, color: 'var(--text)', margin: '8px 0 0' }}>
               "{prompt}"
             </div>
-            <button className="btn btn-ghost" onClick={() => navigate(`/w/${worldId}/prompts`)}>More prompts <Icon name="arrow-right" size={11} /></button>
           </div>
         </section>
       </div>
@@ -252,19 +261,55 @@ export default function WorldHome() {
               </div>
               <div>
                 <label className="label">Cover</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {WORLD_GRADIENTS.map(g => (
-                    <button
-                      key={g}
-                      onClick={() => setMeta(m => ({ ...m, coverGradient: g }))}
+                {meta.coverGradient?.startsWith('url(') ? (
+                  <div style={{ marginBottom: 8 }}>
+                    <div
                       style={{
-                        width: 64, height: 38, borderRadius: 8, background: g,
-                        border: meta.coverGradient === g ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        cursor: 'pointer',
+                        height: 100, borderRadius: 8, background: meta.coverGradient,
+                        backgroundSize: 'cover', backgroundPosition: 'center',
+                        border: '1px solid var(--border)',
+                        position: 'relative',
                       }}
-                    />
-                  ))}
-                </div>
+                    >
+                      <button
+                        className="btn btn-ghost btn-icon"
+                        onClick={() => setMeta(m => ({ ...m, coverGradient: WORLD_GRADIENTS[0] }))}
+                        title="Remove image (revert to gradient)"
+                        style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.45)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
+                      >
+                        <Icon name="x" size={13} />
+                      </button>
+                    </div>
+                    <div className="text-dim" style={{ fontSize: 11, marginTop: 4 }}>Custom uploaded image is active.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {WORLD_GRADIENTS.map(g => (
+                      <button
+                        key={g}
+                        onClick={() => setMeta(m => ({ ...m, coverGradient: g }))}
+                        style={{
+                          width: 64, height: 38, borderRadius: 8, background: g,
+                          border: meta.coverGradient === g ? '2px solid var(--accent)' : '1px solid var(--border)',
+                          cursor: 'pointer',
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+                <label className="btn btn-ghost" style={{ display: 'inline-flex', cursor: 'pointer' }}>
+                  <Icon name="upload" size={13} /> Upload custom cover image
+                  <input
+                    type="file" accept="image/*" style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const compressed = await compressFile(f, 2200, 0.85);
+                      setMeta(m => ({ ...m, coverGradient: `url(${compressed}) center/cover` }));
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>

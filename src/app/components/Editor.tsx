@@ -4,20 +4,25 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import Underline from '@tiptap/extension-underline';
+import { BubbleMenu } from '@tiptap/react/menus';
 import { WikiLink } from './WikiLinkExtension';
 import { compressFile } from '../lib/imageCompress';
+import PromptPicker, { sectionsToTiptapNodes } from './PromptPicker';
 import Icon from './Icon';
-import type { Article } from '../types';
+import type { Article, ArticleCategory } from '../types';
 
 interface Props {
   initialJson: any;
   articlesIndex: Record<string, Article>;
+  category?: ArticleCategory;
   onChange: (json: any, plain: string) => void;
   onOpenArticle?: (id: string) => void;
 }
 
-export default function Editor({ initialJson, articlesIndex, onChange, onOpenArticle }: Props) {
+export default function Editor({ initialJson, articlesIndex, category, onChange, onOpenArticle }: Props) {
   const [linkPrompt, setLinkPrompt] = useState<null | { target: string }>(null);
+  const [promptPickerOpen, setPromptPickerOpen] = useState(false);
   const articlesByTitle = useMemo(() => {
     const out: Record<string, Article> = {};
     for (const id in articlesIndex) {
@@ -32,9 +37,10 @@ export default function Editor({ initialJson, articlesIndex, onChange, onOpenArt
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      Underline,
       Image.configure({ allowBase64: true, inline: false }),
       Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
-      Placeholder.configure({ placeholder: 'Begin writing… use [[Title]] to link to other articles.' }),
+      Placeholder.configure({ placeholder: 'Begin writing… use [[Title]] to link, or click "+ Prompts" above to insert template questions.' }),
       WikiLink,
     ],
     content: initialJson,
@@ -116,8 +122,22 @@ export default function Editor({ initialJson, articlesIndex, onChange, onOpenArt
   return (
     <div>
       <div className="editor-toolbar">
+        {category && (
+          <>
+            <button
+              onClick={() => setPromptPickerOpen(true)}
+              title="Insert template prompts at cursor"
+              className="prompt-pick-btn"
+              style={{ background: 'rgba(67,199,199,0.12)', borderColor: 'rgba(67,199,199,0.35)', color: 'var(--accent)' }}
+            >
+              <Icon name="sparkles" size={13} /> Prompts
+            </button>
+            <div className="sep" />
+          </>
+        )}
         <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold (Ctrl+B)"><Icon name="bold" size={14} /></button>
         <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic (Ctrl+I)"><Icon name="italic" size={14} /></button>
+        <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={editor.isActive('underline') ? 'is-active' : ''} title="Underline (Ctrl+U)"><Icon name="underline" size={14} /></button>
         <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="Strike"><span style={{ textDecoration: 'line-through', fontSize: 13 }}>S</span></button>
         <button onClick={() => editor.chain().focus().toggleCode().run()} className={editor.isActive('code') ? 'is-active' : ''} title="Code">{`<>`}</button>
         <div className="sep" />
@@ -137,9 +157,59 @@ export default function Editor({ initialJson, articlesIndex, onChange, onOpenArt
         <button onClick={() => editor.chain().focus().redo().run()} title="Redo"><Icon name="redo" size={14} /></button>
       </div>
 
+      {/* Floating menu that appears when text is highlighted */}
+      {editor && (
+        <BubbleMenu editor={editor} tippyOptions={{ duration: 120, placement: 'top' }}>
+          <div className="bubble-menu">
+            <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold"><Icon name="bold" size={13} /></button>
+            <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic"><Icon name="italic" size={13} /></button>
+            <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={editor.isActive('underline') ? 'is-active' : ''} title="Underline"><Icon name="underline" size={13} /></button>
+            <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="Strike"><span style={{ textDecoration: 'line-through', fontSize: 12 }}>S</span></button>
+            <button onClick={() => editor.chain().focus().toggleCode().run()} className={editor.isActive('code') ? 'is-active' : ''} title="Code">{`<>`}</button>
+            <div className="bubble-sep" />
+            <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={editor.isActive('heading', { level: 2 }) ? 'is-active' : ''} title="Heading"><Icon name="heading-2" size={13} /></button>
+            <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={editor.isActive('blockquote') ? 'is-active' : ''} title="Quote"><Icon name="quote" size={13} /></button>
+            <div className="bubble-sep" />
+            <button
+              title="Wrap selection in wiki link"
+              onClick={() => {
+                const sel = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to);
+                if (sel) {
+                  editor.chain().focus().deleteSelection().insertWikiLink(sel).run();
+                }
+              }}
+            >
+              [[ ]]
+            </button>
+            <button
+              title="Wrap in external link"
+              onClick={() => {
+                const url = prompt('URL:');
+                if (url) editor.chain().focus().setLink({ href: url }).run();
+              }}
+            >
+              <Icon name="link" size={13} />
+            </button>
+          </div>
+        </BubbleMenu>
+      )}
+
       <div ref={wrapperRef} className="tiptap-wrap">
         <EditorContent editor={editor} className="tiptap" />
       </div>
+
+      {promptPickerOpen && category && (
+        <PromptPicker
+          category={category}
+          onClose={() => setPromptPickerOpen(false)}
+          onInsert={(sections) => {
+            const nodes = sectionsToTiptapNodes(sections);
+            // Insert at the end of the document so we don't disrupt cursor work.
+            // For cursor-position insertion, use insertContent without setMeta:
+            editor.chain().focus().insertContent(nodes).run();
+          }}
+        />
+      )}
 
       {linkPrompt && (
         <div className="modal-backdrop" onClick={() => setLinkPrompt(null)}>

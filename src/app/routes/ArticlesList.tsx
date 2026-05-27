@@ -110,7 +110,10 @@ export default function ArticlesList({ category }: Props) {
                   <div style={{ height: 100, marginBottom: 10, borderRadius: 8, background: `url(${a.imageDataUrl}) center/cover`, border: '1px solid var(--border)' }} />
                 )}
                 <div className="text-eyebrow" style={{ color: c.accent }}>{c.label}</div>
-                <div className="text-display" style={{ fontSize: 16, margin: '4px 0 6px' }}>{a.title}</div>
+                <div className="text-display" style={{ fontSize: 16, margin: '4px 0 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {a.meta?.icon && <span style={{ fontSize: 18 }}>{a.meta.icon}</span>}
+                  <span>{a.title}</span>
+                </div>
                 <div className="text-mute" style={{ fontSize: 12.5, lineHeight: 1.5, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden' }}>
                   {a.summary || a.contentText.slice(0, 160) || <span style={{ fontStyle: 'italic', color: 'var(--text-dim)' }}>No content yet</span>}
                 </div>

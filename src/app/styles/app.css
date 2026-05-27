@@ -458,6 +458,49 @@ input[type=range].slider::-moz-range-thumb {
 .editor-toolbar button.is-active { background: rgba(67,199,199,0.18); color: var(--accent); border-color: rgba(67,199,199,0.3); }
 .editor-toolbar .sep { width: 1px; background: var(--border); margin: 4px 4px; }
 
+.editor-toolbar .prompt-pick-btn {
+  padding: 4px 12px !important;
+  font-family: Cinzel, serif;
+  letter-spacing: 0.15em;
+  font-size: 11px;
+  text-transform: uppercase;
+  min-width: 0;
+  width: auto;
+}
+
+/* Floating bubble menu (appears on text selection) */
+.bubble-menu {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+}
+.bubble-menu button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-mute);
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.bubble-menu button:hover { background: rgba(67,199,199,0.10); color: var(--text); }
+.bubble-menu button.is-active {
+  background: rgba(67,199,199,0.18);
+  color: var(--accent);
+  border-color: rgba(67,199,199,0.3);
+}
+.bubble-sep { width: 1px; background: var(--border); margin: 2px 3px; }
+
 /* Cover gradient banner */
 .world-cover {
   height: 220px;

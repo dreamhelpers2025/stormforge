@@ -12,6 +12,7 @@ import SpeciesBuilder from '../components/SpeciesBuilder';
 import MagicSystemBuilder from '../components/MagicSystemBuilder';
 import HistoryPanel from '../components/HistoryPanel';
 import Gallery from '../components/Gallery';
+import IconPicker from '../components/IconPicker';
 import { articleWordCount } from '../lib/wordcount';
 import { compressFile } from '../lib/imageCompress';
 import type { Article } from '../types';
@@ -125,13 +126,19 @@ export default function ArticleEditor() {
       {/* Header */}
       <div style={{ marginBottom: 12 }}>
         <div className="text-eyebrow" style={{ color: cat.accent }}>{cat.label}</div>
-        <input
-          className="input"
-          style={{ background: 'transparent', border: 'none', padding: 0, fontFamily: 'Cinzel, serif', fontSize: 32, letterSpacing: '0.04em' }}
-          value={draft.title}
-          placeholder="Untitled"
-          onChange={e => patch('title', e.target.value)}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2 }}>
+          <IconPicker
+            value={draft.meta?.icon}
+            onChange={(icon) => patch('meta', { ...(draft.meta ?? {}), icon })}
+          />
+          <input
+            className="input"
+            style={{ background: 'transparent', border: 'none', padding: 0, fontFamily: 'Cinzel, serif', fontSize: 32, letterSpacing: '0.04em', flex: 1 }}
+            value={draft.title}
+            placeholder="Untitled"
+            onChange={e => patch('title', e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -192,6 +199,9 @@ export default function ArticleEditor() {
             article={draft}
             allArticles={articles}
             onPatch={(meta) => patch('meta', { ...(draft.meta ?? {}), ...meta })}
+            onPatchArticle={(p) => {
+              if ('imageDataUrl' in p) patch('imageDataUrl', p.imageDataUrl as any);
+            }}
           />
         </div>
       )}
@@ -217,6 +227,7 @@ export default function ArticleEditor() {
         key={draft.id}
         initialJson={draft.contentJson}
         articlesIndex={articlesIndex}
+        category={draft.category}
         onChange={(json, text) => {
           setDraft(d => d ? ({ ...d, contentJson: json, contentText: text }) : d);
           setDirty(true);

@@ -11,15 +11,10 @@ import * as cloud from '../lib/cloudSync';
  *  triggers "getSnapshot should be cached" / infinite re-renders. */
 export const EMPTY_ARTICLES: readonly Article[] = Object.freeze([]) as any;
 
-function makeEmptyDoc(category: ArticleCategory) {
-  const sections = TEMPLATES[category] ?? [];
-  const content: any[] = [];
-  for (const s of sections) {
-    content.push({ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: s.heading }] });
-    content.push({ type: 'paragraph', content: [{ type: 'text', marks: [{ type: 'italic' }], text: s.prompt }] });
-  }
-  if (!content.length) content.push({ type: 'paragraph' });
-  return { type: 'doc', content };
+function makeEmptyDoc(_category: ArticleCategory) {
+  // Articles now start blank. The editor exposes a "+ Add prompts" button
+  // that opens a picker for inserting category-appropriate prompts.
+  return { type: 'doc', content: [{ type: 'paragraph' }] };
 }
 
 interface ArticlesStore {
