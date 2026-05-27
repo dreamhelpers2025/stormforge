@@ -25,10 +25,12 @@ import { useProfile } from './stores/useProfile';
 import { useSync } from './stores/useSync';
 import { reconcileAll, resync, setCurrentUser } from './lib/cloudSync';
 import { CATEGORY_MAP } from './lib/categories';
+import ErrorBoundary from './components/ErrorBoundary';
 import type { ArticleCategory } from './types';
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <HashRouter>
       <Bootstrap>
         <Routes>
@@ -50,6 +52,7 @@ export default function App() {
       <Tutorial />
       <Toaster />
     </HashRouter>
+    </ErrorBoundary>
   );
 }
 
