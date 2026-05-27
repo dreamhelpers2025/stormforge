@@ -29,6 +29,8 @@ interface ArticlesStore {
   search: (worldId: string, q: string) => Article[];
   /** Bulk insert pre-constructed articles. Used by the import flow. */
   bulkImport: (worldId: string, articles: Article[]) => Promise<void>;
+  /** Recursively delete a folder/article and all of its descendants. */
+  removeRecursive: (id: string) => Promise<void>;
 }
 
 export const useArticles = create<ArticlesStore>((set, get) => ({
@@ -159,6 +161,37 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
     set({ byWorld: { ...get().byWorld, [worldId]: next } });
     // Fire cloud upserts (best-effort, fire-and-forget; reconcile catches stragglers)
     for (const a of articles) cloud.upsertArticle(a);
+  },
+  removeRecursive: async (id) => {
+    const root = await db.articles.get(id);
+    if (!root) return;
+    const worldId = root.worldId;
+    // BFS to collect every descendant id
+    const allArticles = get().byWorld[worldId] ?? await db.articles.where('worldId').equals(worldId).toArray();
+    const childrenByParent = new Map<string, string[]>();
+    for (const a of allArticles) {
+      const pid = (a.meta?.parentId as string | undefined);
+      if (pid) {
+        const arr = childrenByParent.get(pid) ?? [];
+        arr.push(a.id);
+        childrenByParent.set(pid, arr);
+      }
+    }
+    const toDelete: string[] = [];
+    const queue = [id];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      toDelete.push(cur);
+      const kids = childrenByParent.get(cur) ?? [];
+      queue.push(...kids);
+    }
+    await db.articles.bulkDelete(toDelete);
+    // Clean up revisions for each deleted article
+    for (const did of toDelete) deleteRevisionsFor(did).catch(() => {});
+    const survivors = (get().byWorld[worldId] ?? []).filter(a => !toDelete.includes(a.id));
+    set({ byWorld: { ...get().byWorld, [worldId]: survivors } });
+    // Cloud deletes (cascading)
+    for (const did of toDelete) cloud.deleteArticle(did);
   },
 }));
 

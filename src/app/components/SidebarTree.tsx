@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { NavLink, useParams } from 'react-router-dom';
+import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { buildTree, computeOrder, isAncestor, type TreeNode } from '../lib/tree';
 import { useArticles } from '../stores/useArticles';
+import { useToast } from '../stores/useToast';
 import { CATEGORY_MAP } from '../lib/categories';
 import Icon from './Icon';
+import ConfirmDialog from './ConfirmDialog';
 import type { Article, ArticleCategory } from '../types';
 
 interface Props {
@@ -14,8 +16,15 @@ const STORAGE_KEY = (worldId: string) => `stormforge.tree.expanded.${worldId}`;
 
 export default function SidebarTree({ articles }: Props) {
   const { worldId = '', articleId } = useParams();
+  const navigate = useNavigate();
   const updateArticle = useArticles(s => s.update);
   const reparent = useArticles(s => s.reparent);
+  const removeArticle = useArticles(s => s.remove);
+  const removeRecursive = useArticles(s => s.removeRecursive);
+  const push = useToast(s => s.push);
+
+  // Delete confirm state — track the article being deleted
+  const [deleteTarget, setDeleteTarget] = useState<Article | null>(null);
 
   // Persisted expand state — folders default to expanded
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -104,6 +113,51 @@ export default function SidebarTree({ articles }: Props) {
     );
   }
 
+  // Counts for the delete confirm dialog
+  const deleteTargetChildren = useMemo(() => {
+    if (!deleteTarget) return 0;
+    // BFS for descendants
+    const childrenByParent = new Map<string, string[]>();
+    for (const a of articles) {
+      const pid = a.meta?.parentId as string | undefined;
+      if (pid) {
+        const arr = childrenByParent.get(pid) ?? [];
+        arr.push(a.id);
+        childrenByParent.set(pid, arr);
+      }
+    }
+    let count = 0;
+    const queue = [deleteTarget.id];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      const kids = childrenByParent.get(cur) ?? [];
+      count += kids.length;
+      queue.push(...kids);
+    }
+    return count;
+  }, [deleteTarget, articles]);
+
+  async function handleOrphanAndDelete() {
+    if (!deleteTarget) return;
+    const t = deleteTarget;
+    setDeleteTarget(null);
+    // useArticles.remove already orphans children to root
+    if (articleId === t.id) navigate(`/w/${worldId}`);
+    await removeArticle(t.id);
+    push(t.category === 'folder' ? 'Folder removed (contents moved to root).' : 'Article removed.', 'success');
+  }
+
+  async function handleCascadeDelete() {
+    if (!deleteTarget) return;
+    const t = deleteTarget;
+    const count = deleteTargetChildren + 1;
+    setDeleteTarget(null);
+    if (articleId === t.id) navigate(`/w/${worldId}`);
+    // Best-effort: if we're viewing one of the descendants, navigate away too
+    await removeRecursive(t.id);
+    push(`Removed ${count} item${count === 1 ? '' : 's'}.`, 'success');
+  }
+
   return (
     <div>
       {tree.map(node => (
@@ -120,6 +174,7 @@ export default function SidebarTree({ articles }: Props) {
           onDrop={onDrop}
           worldId={worldId}
           onRename={async (id, title) => { await updateArticle(id, { title }); }}
+          onRequestDelete={(a) => setDeleteTarget(a)}
         />
       ))}
       {/* Root drop zone at the bottom — drop here to move to root */}
@@ -151,6 +206,104 @@ export default function SidebarTree({ articles }: Props) {
       >
         {dragId ? 'Drop here to move to root' : ''}
       </div>
+
+      {deleteTarget && (
+        deleteTarget.category === 'folder' && deleteTargetChildren > 0 ? (
+          <FolderDeleteDialog
+            folder={deleteTarget}
+            childCount={deleteTargetChildren}
+            onOrphan={handleOrphanAndDelete}
+            onCascade={handleCascadeDelete}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        ) : (
+          <ConfirmDialog
+            title={deleteTarget.category === 'folder' ? 'Delete empty folder?' : `Delete "${deleteTarget.title}"?`}
+            description={
+              deleteTarget.category === 'folder'
+                ? 'This folder has no contents. It will be removed.'
+                : 'This cannot be undone (use Export first if you might want it back).'
+            }
+            confirmLabel="Delete"
+            danger
+            onConfirm={handleOrphanAndDelete}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        )
+      )}
+    </div>
+  );
+}
+
+/** Two-option dialog for deleting a folder that still has children. */
+function FolderDeleteDialog({
+  folder, childCount, onOrphan, onCascade, onCancel,
+}: {
+  folder: Article;
+  childCount: number;
+  onOrphan: () => void;
+  onCascade: () => void;
+  onCancel: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(480px, 96vw)' }}>
+        <div className="text-eyebrow">Folder</div>
+        <h2 className="text-display" style={{ fontSize: 19, margin: '6px 0 8px' }}>
+          Delete “{folder.title}”?
+        </h2>
+        <p className="text-mute" style={{ fontSize: 13.5, lineHeight: 1.55, margin: '0 0 14px' }}>
+          This folder contains <strong style={{ color: 'var(--text)' }}>{childCount} item{childCount === 1 ? '' : 's'}</strong> (articles and/or nested folders). Pick what should happen to them:
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            className="sf-card hoverable"
+            onClick={onOrphan}
+            style={{
+              padding: 12,
+              textAlign: 'left',
+              cursor: 'pointer',
+              border: '1px solid var(--border-strong)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="arrow-left" size={14} className="text-accent" />
+              <strong style={{ fontSize: 13.5 }}>Move contents to root</strong>
+            </div>
+            <div className="text-mute" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+              The folder is removed but its {childCount} item{childCount === 1 ? '' : 's'} stay safe — they become root-level entries you can reorganize later. <strong>Recommended.</strong>
+            </div>
+          </button>
+
+          <button
+            className="sf-card hoverable"
+            onClick={() => { if (armed) onCascade(); else setArmed(true); }}
+            style={{
+              padding: 12,
+              textAlign: 'left',
+              cursor: 'pointer',
+              border: armed ? '1px solid var(--danger)' : '1px solid rgba(217,122,122,0.3)',
+              background: armed ? 'rgba(217,122,122,0.08)' : undefined,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="trash" size={13} className="" style={{ color: 'var(--danger)' }} />
+              <strong style={{ fontSize: 13.5, color: 'var(--danger)' }}>
+                {armed ? `Click again to confirm — delete folder AND all ${childCount} items` : 'Delete folder AND everything inside it'}
+              </strong>
+            </div>
+            <div className="text-mute" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+              Cascade — every article in this folder (and inside its subfolders) is erased. This cannot be undone.
+            </div>
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -167,6 +320,7 @@ function TreeRow({
   onDrop,
   worldId,
   onRename,
+  onRequestDelete,
 }: {
   node: TreeNode;
   expanded: Set<string>;
@@ -179,6 +333,7 @@ function TreeRow({
   onDrop: (targetId: string | 'root', position: 'before' | 'after' | 'inside') => void;
   worldId: string;
   onRename: (id: string, title: string) => Promise<void>;
+  onRequestDelete: (a: Article) => void;
 }) {
   const a = node.article;
   const isFolder = a.category === 'folder';
@@ -275,6 +430,7 @@ function TreeRow({
 
   const rowContent = (
     <div
+      className="tree-row"
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -362,6 +518,30 @@ function TreeRow({
       {isFolder && hasChildren && (
         <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{node.children.length}</span>
       )}
+
+      {/* Row actions — visible on hover */}
+      {!editing && (
+        <span className="tree-row-actions" onClick={e => e.stopPropagation()}>
+          <button
+            title={isFolder ? 'Rename folder' : 'Rename article'}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditing(true); }}
+            onMouseDown={e => e.stopPropagation()}
+            draggable={false}
+            className="tree-row-btn"
+          >
+            <Icon name="edit" size={11} />
+          </button>
+          <button
+            title={isFolder ? 'Delete folder…' : 'Delete article…'}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRequestDelete(a); }}
+            onMouseDown={e => e.stopPropagation()}
+            draggable={false}
+            className="tree-row-btn danger"
+          >
+            <Icon name="trash" size={11} />
+          </button>
+        </span>
+      )}
     </div>
   );
 
@@ -384,6 +564,7 @@ function TreeRow({
               onDrop={onDrop}
               worldId={worldId}
               onRename={onRename}
+              onRequestDelete={onRequestDelete}
             />
           ))}
         </div>
