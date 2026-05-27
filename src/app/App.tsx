@@ -5,6 +5,7 @@ import TopBar from './components/TopBar';
 import Toaster from './components/Toaster';
 import CommandPalette from './components/CommandPalette';
 import Tutorial from './components/Tutorial';
+import AudioPlayer from './components/AudioPlayer';
 
 import WorldPicker from './routes/WorldPicker';
 import WorldHome from './routes/WorldHome';
@@ -16,6 +17,7 @@ import AppSettings from './routes/AppSettings';
 import MapsList from './routes/MapsList';
 import MapEditor from './routes/MapEditor';
 import Profile from './routes/Profile';
+import AmbiancePage from './routes/AmbiancePage';
 
 import { useSettings } from './stores/useSettings';
 import { useWorlds } from './stores/useWorlds';
@@ -47,6 +49,7 @@ export default function App() {
           <Route path="/w/:worldId/maps" element={<WorldShell><MapsList /></WorldShell>} />
           <Route path="/w/:worldId/maps/:mapId" element={<WorldShell><MapEditor /></WorldShell>} />
           <Route path="/w/:worldId/scratchpad" element={<WorldShell><Scratchpad /></WorldShell>} />
+          <Route path="/w/:worldId/ambiance" element={<WorldShell><AmbiancePage /></WorldShell>} />
           <Route path="/w/:worldId/prompts" element={<WorldShell><Prompts /></WorldShell>} />
           <Route path="*" element={<Navigate to="/worlds" replace />} />
         </Routes>
@@ -141,6 +144,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <main className="app-main">
         <TopBar onOpenCmdK={() => setCmdOpen(true)} />
         <div className="app-scroll scrollbar-thin">{children}</div>
+        <AudioPlayer />
       </main>
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
     </div>

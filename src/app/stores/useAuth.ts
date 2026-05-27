@@ -42,6 +42,11 @@ export const useAuth = create<AuthStore>((set, get) => ({
   },
 
   signOut: async () => {
+    // Stop any playing audio so a signed-out user doesn't keep hearing the previous account's tracks.
+    try {
+      const mod = await import('./useAudio');
+      mod.useAudio.getState().stop();
+    } catch {}
     await supabase.auth.signOut();
     set({ user: null, session: null });
   },

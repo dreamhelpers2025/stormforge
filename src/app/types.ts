@@ -170,6 +170,25 @@ export interface AppSettings {
   recentArticleIds: string[];
 }
 
+/** Ambient audio tracks attached to a world. */
+export interface AudioTrack {
+  id: string;
+  worldId: string;
+  /** Uploader's auth.users.id */
+  userId: string;
+  name: string;
+  /** Storage object path inside the `world-audio` bucket. Format: `<worldId>/<trackId>__<safeFilename>` */
+  storagePath: string;
+  durationMs?: number | null;
+  /** Free-form origin tag: 'upload', 'pixabay', 'incompetech', etc. */
+  source?: string | null;
+  /** Free-form attribution string — artist, license, source URL. */
+  attribution?: string | null;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Sharing / collaboration */
 export type WorldRole = 'owner' | 'editor' | 'viewer';
 

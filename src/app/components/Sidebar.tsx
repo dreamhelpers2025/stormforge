@@ -143,6 +143,9 @@ export default function Sidebar() {
             <NavLink to={`/w/${worldId}/scratchpad`} className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}>
               <Icon name="feather" size={15} /> Scratchpad
             </NavLink>
+            <NavLink to={`/w/${worldId}/ambiance`} className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}>
+              <Icon name="music" size={15} /> Ambiance
+            </NavLink>
           </div>
 
           {/* My articles section header */}

@@ -8,7 +8,9 @@ export type IconName =
   | 'star' | 'bold' | 'italic' | 'underline' | 'list' | 'list-ordered'
   | 'quote' | 'heading-1' | 'heading-2' | 'heading-3' | 'link' | 'undo'
   | 'redo' | 'eye' | 'eye-off' | 'download' | 'upload' | 'menu' | 'sparkles'
-  | 'chevron-down' | 'chevron-right';
+  | 'chevron-down' | 'chevron-right' | 'chevron-up'
+  | 'play' | 'pause' | 'skip-back' | 'skip-forward'
+  | 'volume' | 'volume-mute' | 'music';
 
 interface Props {
   name: IconName;
@@ -80,6 +82,14 @@ export default function Icon({ name, size = 16, className = '', strokeWidth = 1.
     case 'sparkles':     return <svg {...props}><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3ZM19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14ZM5 14l.6 1.4L7 16l-1.4.6L5 18l-.6-1.4L3 16l1.4-.6L5 14Z"/></svg>;
     case 'chevron-down': return <svg {...props}><path d="M6 9l6 6 6-6"/></svg>;
     case 'chevron-right':return <svg {...props}><path d="M9 6l6 6-6 6"/></svg>;
+    case 'chevron-up':   return <svg {...props}><path d="M6 15l6-6 6 6"/></svg>;
+    case 'play':         return <svg {...props} fill="currentColor" stroke="none"><path d="M7 4v16l13-8L7 4Z"/></svg>;
+    case 'pause':        return <svg {...props} fill="currentColor" stroke="none"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>;
+    case 'skip-back':    return <svg {...props} fill="currentColor" stroke="none"><path d="M6 4h2v16H6zM20 4v16L9 12l11-8Z"/></svg>;
+    case 'skip-forward': return <svg {...props} fill="currentColor" stroke="none"><path d="M16 4h2v16h-2zM4 4l11 8-11 8V4Z"/></svg>;
+    case 'volume':       return <svg {...props}><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 8a5 5 0 010 8M19 5a9 9 0 010 14"/></svg>;
+    case 'volume-mute':  return <svg {...props}><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>;
+    case 'music':        return <svg {...props}><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>;
   }
   return null;
 }
