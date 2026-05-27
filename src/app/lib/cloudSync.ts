@@ -109,67 +109,104 @@ export async function reconcileAll(userId: string): Promise<void> {
 }
 
 // ------- per-table reconcile ---------
+//
+// All reconciles use a two-phase strategy:
+//   Phase 1: SELECT id, updated_at  (tiny response, immune to row size)
+//   Phase 2: SELECT * but ONLY for the rows we actually need to pull down,
+//            and only in small chunks so any single huge row can't blow
+//            the whole sync up.
+//
+// This is what prevents a user with a large cover image / large embedded
+// images in articles from getting ERR_CONNECTION_RESET on reconcile.
+
+/** Decide which IDs need to be pulled down, which local rows need pushing up. */
+function planDelta<L extends { id: string; updatedAt: number }>(
+  cloudMeta: Array<{ id: string; updated_at: number }>,
+  localRows: L[]
+): { idsToPull: string[]; toPushUp: L[] } {
+  const cloudMap = new Map<string, number>();
+  for (const r of cloudMeta) cloudMap.set(r.id, Number(r.updated_at) || 0);
+  const localMap = new Map<string, L>();
+  for (const r of localRows) localMap.set(r.id, r);
+
+  const idsToPull: string[] = [];
+  const toPushUp: L[] = [];
+
+  // Local rows: push up if not in cloud OR if local newer
+  for (const local of localRows) {
+    const cloudTs = cloudMap.get(local.id);
+    if (cloudTs == null) toPushUp.push(local);
+    else if (local.updatedAt > cloudTs) toPushUp.push(local);
+  }
+  // Cloud rows: pull down if not local OR if cloud newer
+  for (const r of cloudMeta) {
+    const local = localMap.get(r.id);
+    const cloudTs = Number(r.updated_at) || 0;
+    if (!local) idsToPull.push(r.id);
+    else if (cloudTs > local.updatedAt) idsToPull.push(r.id);
+  }
+  return { idsToPull, toPushUp };
+}
 
 async function reconcileWorlds(userId: string) {
-  const { data, error } = await supabase.from('worlds').select('*');
-  if (error) throw error;
-  const cloudRows: World[] = (data ?? []).map(worldFromCloud);
+  // Phase 1: lightweight catalog
+  const { data: meta, error: metaErr } = await supabase
+    .from('worlds')
+    .select('id, updated_at');
+  if (metaErr) throw metaErr;
+
   const localRows = await db.worlds.toArray();
+  const { idsToPull, toPushUp } = planDelta<World>(meta ?? [], localRows);
 
-  const byId = new Map<string, { cloud?: World; local?: World }>();
-  for (const r of cloudRows) byId.set(r.id, { ...(byId.get(r.id) ?? {}), cloud: r });
-  for (const r of localRows) byId.set(r.id, { ...(byId.get(r.id) ?? {}), local: r });
-
-  const toPushDown: World[] = [];
-  const toPushUp: World[] = [];
-
-  for (const [, pair] of byId) {
-    const { cloud, local } = pair;
-    if (cloud && !local) toPushDown.push(cloud);
-    else if (local && !cloud) toPushUp.push(local);
-    else if (cloud && local) {
-      if (cloud.updatedAt > local.updatedAt) toPushDown.push(cloud);
-      else if (local.updatedAt > cloud.updatedAt) toPushUp.push(local);
+  // Phase 2: fetch full rows we need, in small chunks
+  if (idsToPull.length) {
+    for (let i = 0; i < idsToPull.length; i += 5) {
+      const chunk = idsToPull.slice(i, i + 5);
+      const { data: rows, error: pullErr } = await supabase
+        .from('worlds').select('*').in('id', chunk);
+      if (pullErr) throw pullErr;
+      if (rows?.length) await db.worlds.bulkPut(rows.map(worldFromCloud));
     }
   }
 
-  if (toPushDown.length) await db.worlds.bulkPut(toPushDown);
+  // Push up — chunk
   if (toPushUp.length) {
-    const payload = toPushUp.map(w => worldToCloud(w, userId));
-    const { error: upErr } = await supabase.from('worlds').upsert(payload);
-    if (upErr) throw upErr;
+    for (let i = 0; i < toPushUp.length; i += 5) {
+      const slice = toPushUp.slice(i, i + 5).map(w => worldToCloud(w, userId));
+      const { error: upErr } = await supabase.from('worlds').upsert(slice);
+      if (upErr) throw upErr;
+    }
   }
 }
 
 async function reconcileArticles(userId: string) {
-  const { data, error } = await supabase.from('articles').select('*');
-  if (error) throw error;
-  const cloudRows: Article[] = (data ?? []).map(articleFromCloud);
+  // Phase 1: lightweight catalog
+  const { data: meta, error: metaErr } = await supabase
+    .from('articles')
+    .select('id, updated_at');
+  if (metaErr) throw metaErr;
+
   const localRows = await db.articles.toArray();
+  const { idsToPull, toPushUp } = planDelta<Article>(meta ?? [], localRows);
 
-  const byId = new Map<string, { cloud?: Article; local?: Article }>();
-  for (const r of cloudRows) byId.set(r.id, { ...(byId.get(r.id) ?? {}), cloud: r });
-  for (const r of localRows) byId.set(r.id, { ...(byId.get(r.id) ?? {}), local: r });
-
-  const toPushDown: Article[] = [];
-  const toPushUp: Article[] = [];
-
-  for (const [, pair] of byId) {
-    const { cloud, local } = pair;
-    if (cloud && !local) toPushDown.push(cloud);
-    else if (local && !cloud) toPushUp.push(local);
-    else if (cloud && local) {
-      if (cloud.updatedAt > local.updatedAt) toPushDown.push(cloud);
-      else if (local.updatedAt > cloud.updatedAt) toPushUp.push(local);
+  // Phase 2: pull full articles we need, in chunks. Articles can be heavy
+  // (contentJson with embedded images), so we keep chunks small.
+  if (idsToPull.length) {
+    const PULL_CHUNK = 5;
+    for (let i = 0; i < idsToPull.length; i += PULL_CHUNK) {
+      const chunk = idsToPull.slice(i, i + PULL_CHUNK);
+      const { data: rows, error: pullErr } = await supabase
+        .from('articles').select('*').in('id', chunk);
+      if (pullErr) throw pullErr;
+      if (rows?.length) await db.articles.bulkPut(rows.map(articleFromCloud));
     }
   }
 
-  if (toPushDown.length) await db.articles.bulkPut(toPushDown);
+  // Push up with per-row fallback so a single failing article is named.
   if (toPushUp.length) {
-    // Chunked, with per-row fallback so a single failing article is named in the error.
-    const CHUNK = 10;
-    for (let i = 0; i < toPushUp.length; i += CHUNK) {
-      const slice = toPushUp.slice(i, i + CHUNK);
+    const PUSH_CHUNK = 10;
+    for (let i = 0; i < toPushUp.length; i += PUSH_CHUNK) {
+      const slice = toPushUp.slice(i, i + PUSH_CHUNK);
       const payload = slice.map(a => articleToCloud(a, userId));
       const { error: upErr } = await supabase.from('articles').upsert(payload);
       if (upErr) {
@@ -187,28 +224,31 @@ async function reconcileArticles(userId: string) {
 }
 
 async function reconcileMaps(userId: string) {
-  const { data, error } = await supabase.from('maps').select('*');
-  if (error) throw error;
-  const cloudRows: MapData[] = (data ?? []).map(mapFromCloud);
+  // Phase 1: catalog only (maps have potentially-huge background images)
+  const { data: meta, error: metaErr } = await supabase
+    .from('maps').select('id, updated_at');
+  if (metaErr) throw metaErr;
+
   const localRows = await db.maps.toArray();
-  const byId = new Map<string, { cloud?: MapData; local?: MapData }>();
-  for (const r of cloudRows) byId.set(r.id, { ...(byId.get(r.id) ?? {}), cloud: r });
-  for (const r of localRows) byId.set(r.id, { ...(byId.get(r.id) ?? {}), local: r });
-  const toPushDown: MapData[] = [];
-  const toPushUp: MapData[] = [];
-  for (const [, pair] of byId) {
-    const { cloud, local } = pair;
-    if (cloud && !local) toPushDown.push(cloud);
-    else if (local && !cloud) toPushUp.push(local);
-    else if (cloud && local) {
-      if (cloud.updatedAt > local.updatedAt) toPushDown.push(cloud);
-      else if (local.updatedAt > cloud.updatedAt) toPushUp.push(local);
+  const { idsToPull, toPushUp } = planDelta<MapData>(meta ?? [], localRows);
+
+  // Phase 2: pull what we need
+  if (idsToPull.length) {
+    for (let i = 0; i < idsToPull.length; i += 5) {
+      const chunk = idsToPull.slice(i, i + 5);
+      const { data: rows, error: pullErr } = await supabase
+        .from('maps').select('*').in('id', chunk);
+      if (pullErr) throw pullErr;
+      if (rows?.length) await db.maps.bulkPut(rows.map(mapFromCloud));
     }
   }
-  if (toPushDown.length) await db.maps.bulkPut(toPushDown);
+
   if (toPushUp.length) {
-    const { error: upErr } = await supabase.from('maps').upsert(toPushUp.map(m => mapToCloud(m, userId)));
-    if (upErr) throw upErr;
+    for (let i = 0; i < toPushUp.length; i += 5) {
+      const slice = toPushUp.slice(i, i + 5).map(m => mapToCloud(m, userId));
+      const { error: upErr } = await supabase.from('maps').upsert(slice);
+      if (upErr) throw upErr;
+    }
   }
 }
 

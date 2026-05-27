@@ -324,7 +324,9 @@ export default function WorldHome() {
                     onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
-                      const compressed = await compressFile(f, 2200, 0.85);
+                      // Tighter compression so cover images stay under ~250KB and don't
+                      // bloat the worlds-table row response during cloud reconcile.
+                      const compressed = await compressFile(f, 1200, 0.78);
                       setMeta(m => ({ ...m, coverGradient: `url(${compressed}) center/cover` }));
                       e.target.value = '';
                     }}
