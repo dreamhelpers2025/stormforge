@@ -48,6 +48,7 @@ export default function MapEditor() {
   const [pendingKind, setPendingKind] = useState<PinKind>('city');
   const [pendingStampKey, setPendingStampKey] = useState<string>('mountain');
   const [pendingRegionPoints, setPendingRegionPoints] = useState<[number, number][]>([]);
+  const [regionMode, setRegionMode] = useState<'freehand' | 'polygon'>('freehand');
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [selectedStamp, setSelectedStamp] = useState<string | null>(null);
@@ -60,6 +61,8 @@ export default function MapEditor() {
   const draggingPin = useRef<string | null>(null);
   const draggingStamp = useRef<string | null>(null);
   const draggingVertex = useRef<{ regionId: string; idx: number } | null>(null);
+  /** True while the user is mid-stroke in freehand region drawing. */
+  const isFreehandDrawing = useRef(false);
 
   // Normalize stamps array so existing maps without it don't crash.
   const stamps: MapStamp[] = (map as any)?.stamps ?? [];
@@ -92,6 +95,9 @@ export default function MapEditor() {
       setTool('edit');
       push('Pin placed. Click it to edit.', 'success');
     } else if (tool === 'region') {
+      // Only the polygon (click-each-corner) mode uses click-to-add.
+      // Freehand is driven by mousedown/move/up — see handleMouseDown.
+      if (regionMode !== 'polygon') return;
       const { x, y } = svgCoords(e.clientX, e.clientY);
       setPendingRegionPoints(p => [...p, [x, y]]);
     } else if (tool === 'stamp') {
@@ -188,6 +194,20 @@ export default function MapEditor() {
   }
 
   function handleMouseMove(e: React.MouseEvent) {
+    if (isFreehandDrawing.current) {
+      const { x, y } = svgCoords(e.clientX, e.clientY);
+      // Sample-rate cap: only append if we've moved at least FREEHAND_STEP
+      // viewBox units since the last sampled point. ~0.3 units ≈ 0.3% of map
+      // width — fine enough to feel smooth, coarse enough to keep storage small.
+      const FREEHAND_STEP = 0.3;
+      setPendingRegionPoints(prev => {
+        if (prev.length === 0) return [[x, y]];
+        const [lx, ly] = prev[prev.length - 1];
+        if (Math.hypot(x - lx, y - ly) < FREEHAND_STEP) return prev;
+        return [...prev, [x, y]];
+      });
+      return;
+    }
     if (draggingVertex.current) {
       const { x, y } = svgCoords(e.clientX, e.clientY);
       const dv = draggingVertex.current;
@@ -214,6 +234,30 @@ export default function MapEditor() {
   }
 
   function handleMouseUp() {
+    // Finalize a freehand stroke if one is in progress.
+    if (isFreehandDrawing.current) {
+      isFreehandDrawing.current = false;
+      const raw = pendingRegionPoints;
+      if (raw.length >= 3) {
+        // Simplify the path so we don't store hundreds of near-collinear
+        // points. Epsilon ≈ 0.6 viewBox units keeps the shape visually
+        // identical while collapsing typical strokes to 8–30 points.
+        const simplified = rdpSimplify(raw, 0.6);
+        if (simplified.length >= 3) {
+          const newRegion: MapRegion = {
+            id: nanoid(8),
+            label: 'New Region',
+            color: REGION_COLORS[map.regions.length % REGION_COLORS.length],
+            points: simplified,
+          };
+          patchMap({ regions: [...map.regions, newRegion] });
+          setSelectedRegion(newRegion.id);
+          setTool('edit');
+          push(`Region drawn (${simplified.length} pts).`, 'success');
+        }
+      }
+      setPendingRegionPoints([]);
+    }
     draggingPin.current = null;
     draggingStamp.current = null;
     draggingVertex.current = null;
@@ -223,6 +267,12 @@ export default function MapEditor() {
   function handleMouseDown(e: React.MouseEvent) {
     if (tool === 'pan') {
       isPanning.current = { x: e.clientX, y: e.clientY };
+    } else if (tool === 'region' && regionMode === 'freehand') {
+      // Start a new freehand stroke. We seed pendingRegionPoints with the
+      // first point and grow it on mousemove. mouseup finalizes.
+      const { x, y } = svgCoords(e.clientX, e.clientY);
+      isFreehandDrawing.current = true;
+      setPendingRegionPoints([[x, y]]);
     }
   }
 
@@ -315,12 +365,35 @@ export default function MapEditor() {
 
           {tool === 'region' && (
             <>
-              <button className="btn btn-primary" onClick={finishRegion} disabled={pendingRegionPoints.length < 3}>
-                <Icon name="check" size={12} /> Finish region ({pendingRegionPoints.length} pts)
-              </button>
-              <button className="btn btn-ghost" onClick={cancelRegion}>
-                <Icon name="x" size={12} /> Cancel
-              </button>
+              {/* Mode switch */}
+              <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6 }}>
+                <button
+                  className={'btn ' + (regionMode === 'freehand' ? 'btn-primary' : 'btn-ghost')}
+                  onClick={() => { setRegionMode('freehand'); setPendingRegionPoints([]); }}
+                  style={{ padding: '4px 10px', fontSize: 11 }}
+                  title="Click and drag to trace a freehand curve"
+                >
+                  <Icon name="feather" size={11} /> Freehand
+                </button>
+                <button
+                  className={'btn ' + (regionMode === 'polygon' ? 'btn-primary' : 'btn-ghost')}
+                  onClick={() => { setRegionMode('polygon'); setPendingRegionPoints([]); }}
+                  style={{ padding: '4px 10px', fontSize: 11 }}
+                  title="Click each corner of the polygon, then Finish"
+                >
+                  <Icon name="shield" size={11} /> Polygon
+                </button>
+              </div>
+              {regionMode === 'polygon' && (
+                <>
+                  <button className="btn btn-primary" onClick={finishRegion} disabled={pendingRegionPoints.length < 3}>
+                    <Icon name="check" size={12} /> Finish ({pendingRegionPoints.length} pts)
+                  </button>
+                  <button className="btn btn-ghost" onClick={cancelRegion}>
+                    <Icon name="x" size={12} /> Cancel
+                  </button>
+                </>
+              )}
             </>
           )}
 
@@ -357,8 +430,9 @@ export default function MapEditor() {
               aspectRatio: map.aspectRatio || (16 / 9),
               background: effectiveBg,
               borderRadius: 12,
-              border: '1px solid var(--border)',
-              boxShadow: '0 30px 60px -20px rgba(0,0,0,0.6)',
+              // Border ring drawn as a box-shadow so it doesn't add 1px to the
+              // layout — that 1px was offsetting every click vs the SVG coords.
+              boxShadow: '0 0 0 1px var(--border), 0 30px 60px -20px rgba(0,0,0,0.6)',
               userSelect: 'none',
             }}
           >
@@ -461,12 +535,16 @@ export default function MapEditor() {
                 <>
                   <polyline
                     points={pendingRegionPoints.map(([x, y]) => `${x},${y}`).join(' ')}
-                    fill="none"
+                    fill={regionMode === 'freehand' ? 'rgba(67,199,199,0.18)' : 'none'}
                     stroke="#43C7C7"
-                    strokeWidth="0.3"
-                    strokeDasharray="1 1"
+                    strokeWidth={regionMode === 'freehand' ? 0.45 : 0.3}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    strokeDasharray={regionMode === 'polygon' ? '1 1' : undefined}
                   />
-                  {pendingRegionPoints.map(([x, y], i) => (
+                  {/* Only show vertex markers in polygon mode — freehand
+                      strokes have too many sample points to render dots. */}
+                  {regionMode === 'polygon' && pendingRegionPoints.map(([x, y], i) => (
                     <circle key={i} cx={x} cy={y} r="0.6" fill="#43C7C7" />
                   ))}
                 </>
@@ -569,7 +647,9 @@ export default function MapEditor() {
             {/* Hint overlays */}
             {tool === 'region' && (
               <div style={{ position: 'absolute', top: 12, left: 12, padding: '6px 10px', background: 'rgba(11,30,45,0.85)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--text)', pointerEvents: 'none' }}>
-                Click to add polygon vertices. Need at least 3 to finish.
+                {regionMode === 'freehand'
+                  ? <>Click and <strong>drag</strong> to trace a freehand region. Release to finish.</>
+                  : <>Click each corner of the polygon, then <strong>Finish</strong>.</>}
               </div>
             )}
             {tool === 'pin' && (
@@ -964,6 +1044,53 @@ function CompassRose({ color }: { color: string }) {
 function polygonPath(points: [number, number][]): string {
   if (points.length === 0) return '';
   return points.map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`)).join(' ') + ' Z';
+}
+
+/**
+ * Ramer-Douglas-Peucker polyline simplification. Given a list of points and
+ * a tolerance (epsilon), returns a subset that approximates the original
+ * curve while removing points that fall close to a straight segment.
+ *
+ * Used to compress a freehand stroke (often 200+ samples) down to a handful
+ * of representative vertices that the user can later edit individually.
+ */
+function rdpSimplify(points: [number, number][], epsilon: number): [number, number][] {
+  if (points.length < 3) return points.slice();
+  // Find the point farthest from the line connecting the endpoints.
+  let dmax = 0;
+  let index = 0;
+  const start = points[0];
+  const end = points[points.length - 1];
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = perpendicularDistance(points[i], start, end);
+    if (d > dmax) { dmax = d; index = i; }
+  }
+  if (dmax > epsilon) {
+    const left = rdpSimplify(points.slice(0, index + 1), epsilon);
+    const right = rdpSimplify(points.slice(index), epsilon);
+    return left.slice(0, -1).concat(right);
+  }
+  return [start, end];
+}
+
+function perpendicularDistance(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number],
+): number {
+  const [px, py] = p;
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const dx = bx - ax;
+  const dy = by - ay;
+  if (dx === 0 && dy === 0) return Math.hypot(px - ax, py - ay);
+  // Project p onto segment ab, clamp t to [0, 1] so we measure to the
+  // segment itself rather than its infinite line.
+  let t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * dx;
+  const cy = ay + t * dy;
+  return Math.hypot(px - cx, py - cy);
 }
 
 function clamp(n: number, lo: number, hi: number) { return Math.min(hi, Math.max(lo, n)); }
