@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useAudio, EMPTY_TRACKS } from '../stores/useAudio';
+import { useAudio, EMPTY_TRACKS, MAX_TRACKS_PER_WORLD, MAX_FILE_BYTES } from '../stores/useAudio';
 import { useWorlds } from '../stores/useWorlds';
 import { useAuth } from '../stores/useAuth';
 import { useMembers } from '../stores/useMembers';
@@ -47,8 +47,12 @@ export default function AmbiancePage() {
     const f = e.target.files?.[0];
     e.target.value = '';
     if (!f) return;
-    if (f.size > 20 * 1024 * 1024) {
-      push('That file is over 20 MB. Try a shorter clip or re-export as a smaller mp3/ogg.', 'error');
+    if (f.size > MAX_FILE_BYTES) {
+      push(`That file is over ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB. Try a shorter clip or re-export as a smaller mp3/ogg.`, 'error');
+      return;
+    }
+    if (tracks.length >= MAX_TRACKS_PER_WORLD) {
+      push(`This world already has the maximum of ${MAX_TRACKS_PER_WORLD} ambient tracks. Remove one before adding another.`, 'error');
       return;
     }
     setPendingFile(f);
@@ -132,13 +136,22 @@ export default function AmbiancePage() {
             <div>
               <div className="text-eyebrow">Add</div>
               <div className="text-display" style={{ fontSize: 14, letterSpacing: '0.18em', marginTop: 4 }}>
-                UPLOAD A TRACK
+                UPLOAD A TRACK · {tracks.length} / {MAX_TRACKS_PER_WORLD}
               </div>
               <div className="text-mute" style={{ fontSize: 12, marginTop: 4 }}>
-                MP3, OGG, WAV, M4A, FLAC. 20 MB max — about 20 minutes at decent mp3 quality.
+                MP3, OGG, WAV, M4A, FLAC. {Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB max per file, {MAX_TRACKS_PER_WORLD} tracks per world.
               </div>
+              {tracks.length >= MAX_TRACKS_PER_WORLD && (
+                <div style={{ color: 'var(--ember)', fontSize: 12, marginTop: 6 }}>
+                  Library is full. Remove a track below before adding another.
+                </div>
+              )}
             </div>
-            <button className="btn btn-primary" onClick={pickFile} disabled={uploading}>
+            <button
+              className="btn btn-primary"
+              onClick={pickFile}
+              disabled={uploading || tracks.length >= MAX_TRACKS_PER_WORLD}
+            >
               <Icon name="upload" size={13} /> Choose file
             </button>
             <input

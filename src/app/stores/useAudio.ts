@@ -4,6 +4,10 @@ import type { AudioTrack } from '../types';
 
 export const EMPTY_TRACKS: readonly AudioTrack[] = Object.freeze([]) as any;
 
+/** Hard caps. Mirror the bucket file_size_limit and 0004 trigger in Supabase. */
+export const MAX_TRACKS_PER_WORLD = 4;
+export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 /** How long a signed URL stays valid (seconds). Refresh well before expiry. */
 const SIGNED_URL_TTL_SEC = 60 * 60; // 1 hour
 /** Refresh signed URL this many ms before its expiry. */
@@ -178,8 +182,15 @@ export const useAudio = create<AudioStore>((set, get) => {
       const userId = u.user?.id;
       if (!userId) throw new Error('Not signed in.');
 
-      if (file.size > 20 * 1024 * 1024) {
-        throw new Error('File is larger than 20 MB. Try a shorter clip or a more-compressed format (mp3 / ogg).');
+      if (file.size > MAX_FILE_BYTES) {
+        throw new Error(`File is larger than ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB. Try a shorter clip or a more-compressed format (mp3 / ogg).`);
+      }
+
+      // Enforce per-world cap on the client too so users get a friendly message
+      // before the upload starts. The DB trigger is the authoritative guard.
+      const existing = get().byWorld[worldId] ?? [];
+      if (existing.length >= MAX_TRACKS_PER_WORLD) {
+        throw new Error(`This world already has the maximum of ${MAX_TRACKS_PER_WORLD} ambient tracks. Remove one before adding another.`);
       }
 
       // Mint a track id client-side so we can compose a storage path.
