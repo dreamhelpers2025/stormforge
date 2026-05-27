@@ -48,6 +48,35 @@ function ensureSignedIn(): string | null {
   return currentUserId;
 }
 
+/**
+ * Retry a network operation on transient failures with exponential backoff.
+ *
+ * Supabase JS REJECTS the promise (with TypeError "Failed to fetch") on
+ * network-layer failures — those are exactly the flaky ones worth retrying
+ * (TLS resets from antivirus HTTPS scanning, transient proxy hiccups, etc).
+ * HTTP errors (4xx, 5xx) RESOLVE with { data, error } and are deterministic,
+ * so they're not caught here and don't retry.
+ */
+async function withRetry<T>(fn: () => Promise<T>, label = 'op'): Promise<T> {
+  const delays = [500, 1500, 4000];
+  let lastErr: any;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastErr = e;
+      const msg: string = e?.message ?? String(e);
+      const isNetwork =
+        e instanceof TypeError ||
+        /failed to fetch|network|err_connection|err_network|fetch failed|load failed/i.test(msg);
+      if (!isNetwork || attempt >= delays.length) throw e;
+      console.warn(`[cloudSync] ${label} retry ${attempt + 1}/${delays.length} after ${delays[attempt]}ms:`, msg);
+      await new Promise(r => setTimeout(r, delays[attempt]));
+    }
+  }
+  throw lastErr;
+}
+
 /** Best-effort error stringification for Supabase errors. */
 function formatError(e: any): string {
   if (!e) return 'unknown';
@@ -150,9 +179,10 @@ function planDelta<L extends { id: string; updatedAt: number }>(
 
 async function reconcileWorlds(userId: string) {
   // Phase 1: lightweight catalog
-  const { data: meta, error: metaErr } = await supabase
-    .from('worlds')
-    .select('id, updated_at');
+  const { data: meta, error: metaErr } = await withRetry(
+    () => supabase.from('worlds').select('id, updated_at'),
+    'reconcile.worlds.catalog'
+  );
   if (metaErr) throw metaErr;
 
   const localRows = await db.worlds.toArray();
@@ -162,8 +192,10 @@ async function reconcileWorlds(userId: string) {
   if (idsToPull.length) {
     for (let i = 0; i < idsToPull.length; i += 5) {
       const chunk = idsToPull.slice(i, i + 5);
-      const { data: rows, error: pullErr } = await supabase
-        .from('worlds').select('*').in('id', chunk);
+      const { data: rows, error: pullErr } = await withRetry(
+        () => supabase.from('worlds').select('*').in('id', chunk),
+        'reconcile.worlds.pull'
+      );
       if (pullErr) throw pullErr;
       if (rows?.length) await db.worlds.bulkPut(rows.map(worldFromCloud));
     }
@@ -173,45 +205,53 @@ async function reconcileWorlds(userId: string) {
   if (toPushUp.length) {
     for (let i = 0; i < toPushUp.length; i += 5) {
       const slice = toPushUp.slice(i, i + 5).map(w => worldToCloud(w, userId));
-      const { error: upErr } = await supabase.from('worlds').upsert(slice);
+      const { error: upErr } = await withRetry(
+        () => supabase.from('worlds').upsert(slice),
+        'reconcile.worlds.push'
+      );
       if (upErr) throw upErr;
     }
   }
 }
 
 async function reconcileArticles(userId: string) {
-  // Phase 1: lightweight catalog
-  const { data: meta, error: metaErr } = await supabase
-    .from('articles')
-    .select('id, updated_at');
+  const { data: meta, error: metaErr } = await withRetry(
+    () => supabase.from('articles').select('id, updated_at'),
+    'reconcile.articles.catalog'
+  );
   if (metaErr) throw metaErr;
 
   const localRows = await db.articles.toArray();
   const { idsToPull, toPushUp } = planDelta<Article>(meta ?? [], localRows);
 
-  // Phase 2: pull full articles we need, in chunks. Articles can be heavy
-  // (contentJson with embedded images), so we keep chunks small.
   if (idsToPull.length) {
     const PULL_CHUNK = 5;
     for (let i = 0; i < idsToPull.length; i += PULL_CHUNK) {
       const chunk = idsToPull.slice(i, i + PULL_CHUNK);
-      const { data: rows, error: pullErr } = await supabase
-        .from('articles').select('*').in('id', chunk);
+      const { data: rows, error: pullErr } = await withRetry(
+        () => supabase.from('articles').select('*').in('id', chunk),
+        'reconcile.articles.pull'
+      );
       if (pullErr) throw pullErr;
       if (rows?.length) await db.articles.bulkPut(rows.map(articleFromCloud));
     }
   }
 
-  // Push up with per-row fallback so a single failing article is named.
   if (toPushUp.length) {
     const PUSH_CHUNK = 10;
     for (let i = 0; i < toPushUp.length; i += PUSH_CHUNK) {
       const slice = toPushUp.slice(i, i + PUSH_CHUNK);
       const payload = slice.map(a => articleToCloud(a, userId));
-      const { error: upErr } = await supabase.from('articles').upsert(payload);
+      const { error: upErr } = await withRetry(
+        () => supabase.from('articles').upsert(payload),
+        'reconcile.articles.push'
+      );
       if (upErr) {
         for (const a of slice) {
-          const { error: rowErr } = await supabase.from('articles').upsert(articleToCloud(a, userId));
+          const { error: rowErr } = await withRetry(
+            () => supabase.from('articles').upsert(articleToCloud(a, userId)),
+            'reconcile.articles.push.single'
+          );
           if (rowErr) {
             console.error('[cloudSync] failing article in reconcile:', { id: a.id, title: a.title, category: a.category }, rowErr);
             throw new Error(`article "${a.title}" (${a.category}): ${rowErr.message ?? String(rowErr)}`);
@@ -224,20 +264,22 @@ async function reconcileArticles(userId: string) {
 }
 
 async function reconcileMaps(userId: string) {
-  // Phase 1: catalog only (maps have potentially-huge background images)
-  const { data: meta, error: metaErr } = await supabase
-    .from('maps').select('id, updated_at');
+  const { data: meta, error: metaErr } = await withRetry(
+    () => supabase.from('maps').select('id, updated_at'),
+    'reconcile.maps.catalog'
+  );
   if (metaErr) throw metaErr;
 
   const localRows = await db.maps.toArray();
   const { idsToPull, toPushUp } = planDelta<MapData>(meta ?? [], localRows);
 
-  // Phase 2: pull what we need
   if (idsToPull.length) {
     for (let i = 0; i < idsToPull.length; i += 5) {
       const chunk = idsToPull.slice(i, i + 5);
-      const { data: rows, error: pullErr } = await supabase
-        .from('maps').select('*').in('id', chunk);
+      const { data: rows, error: pullErr } = await withRetry(
+        () => supabase.from('maps').select('*').in('id', chunk),
+        'reconcile.maps.pull'
+      );
       if (pullErr) throw pullErr;
       if (rows?.length) await db.maps.bulkPut(rows.map(mapFromCloud));
     }
@@ -246,14 +288,20 @@ async function reconcileMaps(userId: string) {
   if (toPushUp.length) {
     for (let i = 0; i < toPushUp.length; i += 5) {
       const slice = toPushUp.slice(i, i + 5).map(m => mapToCloud(m, userId));
-      const { error: upErr } = await supabase.from('maps').upsert(slice);
+      const { error: upErr } = await withRetry(
+        () => supabase.from('maps').upsert(slice),
+        'reconcile.maps.push'
+      );
       if (upErr) throw upErr;
     }
   }
 }
 
 async function reconcileNotes(userId: string) {
-  const { data, error } = await supabase.from('scratchpad_notes').select('*');
+  const { data, error } = await withRetry(
+    () => supabase.from('scratchpad_notes').select('*'),
+    'reconcile.notes.select'
+  );
   if (error) throw error;
   const cloudRows: ScratchpadNote[] = (data ?? []).map(noteFromCloud);
   const localRows = await db.scratchpad.toArray();
@@ -267,25 +315,49 @@ async function reconcileNotes(userId: string) {
   const toPushUp = localRows.filter(n => !cloudIds.has(n.id));
   if (toPushDown.length) await db.scratchpad.bulkPut(toPushDown);
   if (toPushUp.length) {
-    const { error: upErr } = await supabase.from('scratchpad_notes').upsert(toPushUp.map(n => noteToCloud(n, userId)));
+    const { error: upErr } = await withRetry(
+      () => supabase.from('scratchpad_notes').upsert(toPushUp.map(n => noteToCloud(n, userId))),
+      'reconcile.notes.push'
+    );
     if (upErr) throw upErr;
   }
 }
 
 async function reconcileRevisions(userId: string) {
-  const { data, error } = await supabase.from('article_revisions').select('*');
-  if (error) throw error;
-  const cloudRows: ArticleRevision[] = (data ?? []).map(revisionFromCloud);
+  // Catalog-only — revisions can be many (one per save) and contain full
+  // contentJson snapshots, so even SELECT id is the right move here.
+  const { data: meta, error: metaErr } = await withRetry(
+    () => supabase.from('article_revisions').select('id'),
+    'reconcile.revisions.catalog'
+  );
+  if (metaErr) throw metaErr;
+
   const localRows = await db.revisions.toArray();
-  const localIds = new Set(localRows.map(r => r.id));
-  const cloudIds = new Set(cloudRows.map(r => r.id));
-  const toPushDown = cloudRows.filter(r => !localIds.has(r.id));
-  const toPushUp = localRows.filter(r => !cloudIds.has(r.id));
-  if (toPushDown.length) await db.revisions.bulkPut(toPushDown);
+  const cloudIdSet = new Set((meta ?? []).map((r: any) => r.id));
+  const localIdSet = new Set(localRows.map(r => r.id));
+
+  // Pull only revisions we don't have locally
+  const idsToPull = (meta ?? []).map((r: any) => r.id).filter((id: string) => !localIdSet.has(id));
+  if (idsToPull.length) {
+    for (let i = 0; i < idsToPull.length; i += 5) {
+      const chunk = idsToPull.slice(i, i + 5);
+      const { data: rows, error: pullErr } = await withRetry(
+        () => supabase.from('article_revisions').select('*').in('id', chunk),
+        'reconcile.revisions.pull'
+      );
+      if (pullErr) throw pullErr;
+      if (rows?.length) await db.revisions.bulkPut(rows.map(revisionFromCloud));
+    }
+  }
+
+  const toPushUp = localRows.filter(r => !cloudIdSet.has(r.id));
   if (toPushUp.length) {
-    for (let i = 0; i < toPushUp.length; i += 25) {
-      const slice = toPushUp.slice(i, i + 25);
-      const { error: upErr } = await supabase.from('article_revisions').upsert(slice.map(r => revisionToCloud(r, userId)));
+    for (let i = 0; i < toPushUp.length; i += 10) {
+      const slice = toPushUp.slice(i, i + 10);
+      const { error: upErr } = await withRetry(
+        () => supabase.from('article_revisions').upsert(slice.map(r => revisionToCloud(r, userId))),
+        'reconcile.revisions.push'
+      );
       if (upErr) throw upErr;
     }
   }
@@ -297,29 +369,35 @@ async function reconcileRevisions(userId: string) {
 
 export function upsertWorld(w: World) {
   const uid = ensureSignedIn(); if (!uid) return;
-  runOp(() => supabase.from('worlds').upsert(worldToCloud(w, uid)).then(throwIfErr));
+  runOp(() => withRetry(
+    () => supabase.from('worlds').upsert(worldToCloud(w, uid)).then(throwIfErr),
+    'upsertWorld'
+  ));
 }
 export function deleteWorld(id: string) {
   const uid = ensureSignedIn(); if (!uid) return;
   runOp(async () => {
-    await supabase.from('article_revisions').delete().eq('world_id', id).then(throwIfErr);
-    await supabase.from('articles').delete().eq('world_id', id).then(throwIfErr);
-    await supabase.from('maps').delete().eq('world_id', id).then(throwIfErr);
-    await supabase.from('scratchpad_notes').delete().eq('world_id', id).then(throwIfErr);
-    await supabase.from('worlds').delete().eq('id', id).then(throwIfErr);
+    await withRetry(() => supabase.from('article_revisions').delete().eq('world_id', id).then(throwIfErr), 'deleteWorld.revisions');
+    await withRetry(() => supabase.from('articles').delete().eq('world_id', id).then(throwIfErr),          'deleteWorld.articles');
+    await withRetry(() => supabase.from('maps').delete().eq('world_id', id).then(throwIfErr),              'deleteWorld.maps');
+    await withRetry(() => supabase.from('scratchpad_notes').delete().eq('world_id', id).then(throwIfErr),  'deleteWorld.notes');
+    await withRetry(() => supabase.from('worlds').delete().eq('id', id).then(throwIfErr),                  'deleteWorld.world');
   });
 }
 
 export function upsertArticle(a: Article) {
   const uid = ensureSignedIn(); if (!uid) return;
-  runOp(() => supabase.from('articles').upsert(articleToCloud(a, uid)).then(throwIfErr));
+  runOp(() => withRetry(
+    () => supabase.from('articles').upsert(articleToCloud(a, uid)).then(throwIfErr),
+    'upsertArticle'
+  ));
 }
 
 /**
  * Batch upsert many articles at once. Used by the import flow so we don't
- * fire 50+ simultaneous requests at the Supabase free tier (which can throttle
- * or fail on overlapping connections). Chunks 20 rows per HTTP call and
- * awaits each chunk before moving on.
+ * fire 50+ simultaneous requests at the Supabase free tier. Chunks 10 rows
+ * per HTTP call, awaits each, retries on network errors, falls back to
+ * per-row when a batch fails so we can name the offending article.
  */
 export function bulkUpsertArticles(articles: Article[]) {
   const uid = ensureSignedIn(); if (!uid) return;
@@ -329,11 +407,16 @@ export function bulkUpsertArticles(articles: Article[]) {
     for (let i = 0; i < articles.length; i += CHUNK) {
       const slice = articles.slice(i, i + CHUNK);
       const payload = slice.map(a => articleToCloud(a, uid));
-      const { error } = await supabase.from('articles').upsert(payload);
+      const { error } = await withRetry(
+        () => supabase.from('articles').upsert(payload),
+        'bulkUpsertArticles.batch'
+      );
       if (error) {
-        // Fall back to per-row to identify which article specifically failed
         for (const a of slice) {
-          const { error: rowErr } = await supabase.from('articles').upsert(articleToCloud(a, uid));
+          const { error: rowErr } = await withRetry(
+            () => supabase.from('articles').upsert(articleToCloud(a, uid)),
+            'bulkUpsertArticles.row'
+          );
           if (rowErr) {
             console.error('[cloudSync] failing article:', { id: a.id, title: a.title, category: a.category }, rowErr);
             throw new Error(`article "${a.title}" (${a.category}): ${rowErr.message ?? String(rowErr)}`);
@@ -347,32 +430,47 @@ export function bulkUpsertArticles(articles: Article[]) {
 export function deleteArticle(id: string) {
   const uid = ensureSignedIn(); if (!uid) return;
   runOp(async () => {
-    await supabase.from('article_revisions').delete().eq('article_id', id).then(throwIfErr);
-    await supabase.from('articles').delete().eq('id', id).then(throwIfErr);
+    await withRetry(() => supabase.from('article_revisions').delete().eq('article_id', id).then(throwIfErr), 'deleteArticle.revisions');
+    await withRetry(() => supabase.from('articles').delete().eq('id', id).then(throwIfErr),                   'deleteArticle.article');
   });
 }
 
 export function upsertMap(m: MapData) {
   const uid = ensureSignedIn(); if (!uid) return;
-  runOp(() => supabase.from('maps').upsert(mapToCloud(m, uid)).then(throwIfErr));
+  runOp(() => withRetry(
+    () => supabase.from('maps').upsert(mapToCloud(m, uid)).then(throwIfErr),
+    'upsertMap'
+  ));
 }
 export function deleteMap(id: string) {
   const uid = ensureSignedIn(); if (!uid) return;
-  runOp(() => supabase.from('maps').delete().eq('id', id).then(throwIfErr));
+  runOp(() => withRetry(
+    () => supabase.from('maps').delete().eq('id', id).then(throwIfErr),
+    'deleteMap'
+  ));
 }
 
 export function upsertNote(n: ScratchpadNote) {
   const uid = ensureSignedIn(); if (!uid) return;
-  runOp(() => supabase.from('scratchpad_notes').upsert(noteToCloud(n, uid)).then(throwIfErr));
+  runOp(() => withRetry(
+    () => supabase.from('scratchpad_notes').upsert(noteToCloud(n, uid)).then(throwIfErr),
+    'upsertNote'
+  ));
 }
 export function deleteNote(id: string) {
   const uid = ensureSignedIn(); if (!uid) return;
-  runOp(() => supabase.from('scratchpad_notes').delete().eq('id', id).then(throwIfErr));
+  runOp(() => withRetry(
+    () => supabase.from('scratchpad_notes').delete().eq('id', id).then(throwIfErr),
+    'deleteNote'
+  ));
 }
 
 export function upsertRevision(r: ArticleRevision) {
   const uid = ensureSignedIn(); if (!uid) return;
-  runOp(() => supabase.from('article_revisions').upsert(revisionToCloud(r, uid)).then(throwIfErr));
+  runOp(() => withRetry(
+    () => supabase.from('article_revisions').upsert(revisionToCloud(r, uid)).then(throwIfErr),
+    'upsertRevision'
+  ));
 }
 
 function throwIfErr({ error }: { error: any }) { if (error) throw error; }
