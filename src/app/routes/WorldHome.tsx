@@ -165,8 +165,14 @@ export default function WorldHome() {
           <p style={{ whiteSpace: 'pre-wrap', margin: 0, lineHeight: 1.65, fontSize: 15, color: 'var(--text-mute)' }}>{world.description}</p>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <div className="text-mute" style={{ fontSize: 14, fontStyle: 'italic' }}>No description yet. What is this realm? A wounded empire? A new earth?</div>
-            <button className="btn btn-ghost" onClick={() => setEditingMeta(true)}><Icon name="edit" size={13} /> Describe it</button>
+            <div className="text-mute" style={{ fontSize: 14, fontStyle: 'italic' }}>
+              {canEdit
+                ? 'No description yet. What is this realm? A wounded empire? A new earth?'
+                : 'The owner hasn’t written a description yet.'}
+            </div>
+            {canEdit && (
+              <button className="btn btn-ghost" onClick={() => setEditingMeta(true)}><Icon name="edit" size={13} /> Describe it</button>
+            )}
           </div>
         )}
       </div>
@@ -233,24 +239,27 @@ export default function WorldHome() {
         </section>
 
         <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="sf-card" style={{ padding: 16 }}>
-            <div className="text-display" style={{ fontSize: 13, letterSpacing: '0.2em', marginBottom: 10 }}>QUICK FORGE</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-              {['species', 'character', 'place', 'magic_system', 'language', 'item', 'conflict', 'history'].map(k => {
-                const c = CATEGORY_MAP[k as any];
-                return (
-                  <button key={k} className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => quickCreate(k)}>
-                    <Icon name={c.icon as any} size={13} /> {c.label}
-                  </button>
-                );
-              })}
+          {canEdit && (
+            <div className="sf-card" style={{ padding: 16 }}>
+              <div className="text-display" style={{ fontSize: 13, letterSpacing: '0.2em', marginBottom: 10 }}>QUICK FORGE</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {['species', 'character', 'place', 'magic_system', 'language', 'item', 'conflict', 'history'].map(k => {
+                  const c = CATEGORY_MAP[k as any];
+                  return (
+                    <button key={k} className="btn btn-ghost" style={{ justifyContent: 'flex-start' }} onClick={() => quickCreate(k)}>
+                      <Icon name={c.icon as any} size={13} /> {c.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           <GoalCard
             goal={goal}
             totalWords={totalWords}
             wordPct={wordPct}
+            canEdit={canEdit}
             onPatch={patchGoal}
             onAddMilestone={addMilestone}
             onToggleMilestone={toggleMilestone}
@@ -386,7 +395,7 @@ export default function WorldHome() {
   );
 }
 
-function GoalCard({ goal, totalWords, wordPct, onPatch, onAddMilestone, onToggleMilestone, onRemoveMilestone }: {
+function GoalCard({ goal, totalWords, wordPct, onPatch, onAddMilestone, onToggleMilestone, onRemoveMilestone, canEdit }: {
   goal: WorldGoal;
   totalWords: number;
   wordPct: number;
@@ -394,6 +403,7 @@ function GoalCard({ goal, totalWords, wordPct, onPatch, onAddMilestone, onToggle
   onAddMilestone: (label: string) => void;
   onToggleMilestone: (id: string) => void;
   onRemoveMilestone: (id: string) => void;
+  canEdit: boolean;
 }) {
   const [draftMs, setDraftMs] = useState('');
   const [editTarget, setEditTarget] = useState(false);
@@ -414,9 +424,11 @@ function GoalCard({ goal, totalWords, wordPct, onPatch, onAddMilestone, onToggle
             <span className="text-mute" style={{ fontSize: 12 }}>
               Word target: <strong>{goal.wordTarget ? goal.wordTarget.toLocaleString() : 'unset'}</strong>
             </span>
-            <button className="btn btn-ghost" onClick={() => { setEditTarget(true); setTargetDraft(String(goal.wordTarget || '')); }}>
-              <Icon name="edit" size={11} /> {goal.wordTarget ? 'Edit' : 'Set'}
-            </button>
+            {canEdit && (
+              <button className="btn btn-ghost" onClick={() => { setEditTarget(true); setTargetDraft(String(goal.wordTarget || '')); }}>
+                <Icon name="edit" size={11} /> {goal.wordTarget ? 'Edit' : 'Set'}
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 6 }}>
@@ -450,23 +462,27 @@ function GoalCard({ goal, totalWords, wordPct, onPatch, onAddMilestone, onToggle
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
         {goal.milestones.map(ms => (
           <div key={ms.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input type="checkbox" checked={ms.done} onChange={() => onToggleMilestone(ms.id)} />
+            <input type="checkbox" checked={ms.done} onChange={() => onToggleMilestone(ms.id)} disabled={!canEdit} />
             <span style={{ flex: 1, fontSize: 13, textDecoration: ms.done ? 'line-through' : 'none', color: ms.done ? 'var(--text-dim)' : 'var(--text)' }}>{ms.label}</span>
-            <button className="btn btn-ghost btn-icon" onClick={() => onRemoveMilestone(ms.id)}><Icon name="x" size={11} /></button>
+            {canEdit && (
+              <button className="btn btn-ghost btn-icon" onClick={() => onRemoveMilestone(ms.id)}><Icon name="x" size={11} /></button>
+            )}
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          className="input" placeholder="Add a milestone…" value={draftMs}
-          onChange={e => setDraftMs(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && draftMs.trim()) { onAddMilestone(draftMs); setDraftMs(''); } }}
-          style={{ flex: 1 }}
-        />
-        <button className="btn btn-ghost" disabled={!draftMs.trim()} onClick={() => { onAddMilestone(draftMs); setDraftMs(''); }}>
-          <Icon name="plus" size={12} />
-        </button>
-      </div>
+      {canEdit && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            className="input" placeholder="Add a milestone…" value={draftMs}
+            onChange={e => setDraftMs(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && draftMs.trim()) { onAddMilestone(draftMs); setDraftMs(''); } }}
+            style={{ flex: 1 }}
+          />
+          <button className="btn btn-ghost" disabled={!draftMs.trim()} onClick={() => { onAddMilestone(draftMs); setDraftMs(''); }}>
+            <Icon name="plus" size={12} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

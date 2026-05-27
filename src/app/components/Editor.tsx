@@ -18,9 +18,12 @@ interface Props {
   category?: ArticleCategory;
   onChange: (json: any, plain: string) => void;
   onOpenArticle?: (id: string) => void;
+  /** When false, the Tiptap surface becomes read-only and the toolbar hides
+   *  its mutating controls. Default: true. */
+  editable?: boolean;
 }
 
-export default function Editor({ initialJson, articlesIndex, category, onChange, onOpenArticle }: Props) {
+export default function Editor({ initialJson, articlesIndex, category, onChange, onOpenArticle, editable = true }: Props) {
   const [linkPrompt, setLinkPrompt] = useState<null | { target: string }>(null);
   const [promptPickerOpen, setPromptPickerOpen] = useState(false);
   const articlesByTitle = useMemo(() => {
@@ -33,6 +36,7 @@ export default function Editor({ initialJson, articlesIndex, category, onChange,
   }, [articlesIndex]);
 
   const editor = useEditor({
+    editable,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
@@ -40,7 +44,9 @@ export default function Editor({ initialJson, articlesIndex, category, onChange,
       Underline,
       Image.configure({ allowBase64: true, inline: false }),
       Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
-      Placeholder.configure({ placeholder: 'Begin writing… use [[Title]] to link, or click "+ Prompts" above to insert template questions.' }),
+      Placeholder.configure({ placeholder: editable
+        ? 'Begin writing… use [[Title]] to link, or click "+ Prompts" above to insert template questions.'
+        : 'Nothing written here yet.' }),
       WikiLink,
     ],
     content: initialJson,
@@ -49,7 +55,7 @@ export default function Editor({ initialJson, articlesIndex, category, onChange,
       reflectBroken(editor);
     },
     onCreate: ({ editor }) => reflectBroken(editor),
-  });
+  }, [editable]);
 
   // After articles index changes, recompute broken state visually
   useEffect(() => { if (editor) reflectBroken(editor); }, [articlesByTitle, editor]);
@@ -121,6 +127,7 @@ export default function Editor({ initialJson, articlesIndex, category, onChange,
 
   return (
     <div>
+      {editable && (
       <div className="editor-toolbar">
         {category && (
           <>
@@ -156,9 +163,10 @@ export default function Editor({ initialJson, articlesIndex, category, onChange,
         <button onClick={() => editor.chain().focus().undo().run()} title="Undo"><Icon name="undo" size={14} /></button>
         <button onClick={() => editor.chain().focus().redo().run()} title="Redo"><Icon name="redo" size={14} /></button>
       </div>
+      )}
 
       {/* Floating menu that appears when text is highlighted */}
-      {editor && (
+      {editable && editor && (
         <BubbleMenu editor={editor} tippyOptions={{ duration: 120, placement: 'top' }}>
           <div className="bubble-menu">
             <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold"><Icon name="bold" size={13} /></button>

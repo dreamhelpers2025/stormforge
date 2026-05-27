@@ -16,6 +16,7 @@ import Gallery from '../components/Gallery';
 import IconPicker from '../components/IconPicker';
 import { articleWordCount } from '../lib/wordcount';
 import { compressFile } from '../lib/imageCompress';
+import { useCanEditWorld } from '../lib/useCanEdit';
 import type { Article } from '../types';
 
 export default function ArticleEditor() {
@@ -28,6 +29,7 @@ export default function ArticleEditor() {
   const pushRecent = useSettings(s => s.pushRecentArticle);
 
   const article = useMemo(() => articles.find(a => a.id === articleId), [articles, articleId]);
+  const canEdit = useCanEditWorld(worldId);
   const [draft, setDraft] = useState<Article | null>(null);
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -54,10 +56,12 @@ export default function ArticleEditor() {
     return out;
   }, [articles]);
 
-  // Auto-save: debounce 800ms after last change
+  // Auto-save: debounce 800ms after last change.
+  // Viewers (canEdit=false) never commit — their drafts live in component
+  // state until they navigate away, at which point they're discarded.
   const saveTimer = useRef<any>(null);
   useEffect(() => {
-    if (!dirty || !draft) return;
+    if (!dirty || !draft || !canEdit) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       await updateArticle(draft.id, {
@@ -76,18 +80,22 @@ export default function ArticleEditor() {
     return () => clearTimeout(saveTimer.current);
   }, [draft, dirty, updateArticle]);
 
-  // Cmd/Ctrl+S to force-save
+  // Cmd/Ctrl+S to force-save (suppressed for viewers — there's nothing to save).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
+        if (!canEdit) {
+          push('Read-only — you can view but not edit this world.', 'info');
+          return;
+        }
         if (saveTimer.current) clearTimeout(saveTimer.current);
         if (draft) updateArticle(draft.id, draft as any).then(() => { setDirty(false); push('Saved.', 'success'); });
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draft, updateArticle, push]);
+  }, [draft, updateArticle, push, canEdit]);
 
   if (!article || !draft) {
     return <EmptyState title="Article not found" description="It may have been erased. Return to the article list." />;
@@ -113,14 +121,40 @@ export default function ArticleEditor() {
 
   return (
     <div className="fade-in" style={{ maxWidth: 980, margin: '0 auto', padding: '20px 28px 80px' }}>
+      {/* Viewer banner */}
+      {!canEdit && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: '1px solid rgba(184,138,59,0.45)',
+            background: 'rgba(184,138,59,0.10)',
+            color: 'var(--ember)',
+            fontSize: 12.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <Icon name="eye" size={13} />
+          <strong>Read-only.</strong>
+          <span style={{ color: 'var(--text-mute)', fontWeight: 400 }}>
+            This world was shared with you as a viewer. You can browse but not save changes.
+          </span>
+        </div>
+      )}
+
       {/* Hero / cover */}
       {draft.imageDataUrl ? (
         <div style={{ position: 'relative', height: 220, borderRadius: 12, marginBottom: 18, background: `url(${draft.imageDataUrl}) center/cover`, border: '1px solid var(--border)' }}>
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5) 100%)', borderRadius: 12 }} />
-          <div style={{ position: 'absolute', top: 10, right: 10, display: 'flex', gap: 6 }}>
-            <button className="btn btn-ghost btn-icon" style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }} onClick={chooseImage} title="Change image"><Icon name="edit" size={14} /></button>
-            <button className="btn btn-ghost btn-icon" style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }} onClick={() => patch('imageDataUrl', undefined as any)} title="Remove image"><Icon name="x" size={14} /></button>
-          </div>
+          {canEdit && (
+            <div style={{ position: 'absolute', top: 10, right: 10, display: 'flex', gap: 6 }}>
+              <button className="btn btn-ghost btn-icon" style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }} onClick={chooseImage} title="Change image"><Icon name="edit" size={14} /></button>
+              <button className="btn btn-ghost btn-icon" style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }} onClick={() => patch('imageDataUrl', undefined as any)} title="Remove image"><Icon name="x" size={14} /></button>
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -138,60 +172,77 @@ export default function ArticleEditor() {
             value={draft.title}
             placeholder="Untitled"
             onChange={e => patch('title', e.target.value)}
+            readOnly={!canEdit}
           />
         </div>
       </div>
 
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-ghost" onClick={() => patch('pinned', !draft.pinned)}>
-          <Icon name="star" size={13} className={draft.pinned ? 'text-accent' : ''} /> {draft.pinned ? 'Pinned' : 'Pin'}
-        </button>
-        {!draft.imageDataUrl && (
-          <button className="btn btn-ghost" onClick={chooseImage}><Icon name="image" size={13} /> Cover image</button>
+        {canEdit && (
+          <>
+            <button className="btn btn-ghost" onClick={() => patch('pinned', !draft.pinned)}>
+              <Icon name="star" size={13} className={draft.pinned ? 'text-accent' : ''} /> {draft.pinned ? 'Pinned' : 'Pin'}
+            </button>
+            {!draft.imageDataUrl && (
+              <button className="btn btn-ghost" onClick={chooseImage}><Icon name="image" size={13} /> Cover image</button>
+            )}
+            <select
+              className="select"
+              style={{ width: 'auto' }}
+              value={draft.status}
+              onChange={e => patch('status', e.target.value as any)}
+            >
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+            </select>
+            <input
+              className="input"
+              style={{ width: 220 }}
+              placeholder="tags, comma, separated"
+              value={draft.tags.join(', ')}
+              onChange={e => patch('tags', e.target.value.split(',').map(t => t.trim()).filter(Boolean))}
+            />
+            <button className="btn btn-ghost" onClick={() => setShowGallery(s => !s)}>
+              <Icon name="image" size={13} /> Gallery{(draft.gallery?.length ?? 0) > 0 ? ` (${draft.gallery?.length})` : ''}
+            </button>
+            <button className="btn btn-ghost" onClick={() => setShowHistory(true)} title="View history">
+              <Icon name="undo" size={13} /> History
+            </button>
+          </>
         )}
-        <select
-          className="select"
-          style={{ width: 'auto' }}
-          value={draft.status}
-          onChange={e => patch('status', e.target.value as any)}
-        >
-          <option value="draft">Draft</option>
-          <option value="published">Published</option>
-        </select>
-        <input
-          className="input"
-          style={{ width: 220 }}
-          placeholder="tags, comma, separated"
-          value={draft.tags.join(', ')}
-          onChange={e => patch('tags', e.target.value.split(',').map(t => t.trim()).filter(Boolean))}
-        />
-        <button className="btn btn-ghost" onClick={() => setShowGallery(s => !s)}>
-          <Icon name="image" size={13} /> Gallery{(draft.gallery?.length ?? 0) > 0 ? ` (${draft.gallery?.length})` : ''}
-        </button>
-        <button className="btn btn-ghost" onClick={() => setShowHistory(true)} title="View history">
-          <Icon name="undo" size={13} /> History
-        </button>
+        {!canEdit && (draft.gallery?.length ?? 0) > 0 && (
+          <button className="btn btn-ghost" onClick={() => setShowGallery(s => !s)}>
+            <Icon name="image" size={13} /> Gallery ({draft.gallery?.length})
+          </button>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: 'var(--text-dim)' }} title="Words in this article (content + summary)">
             {articleWordCount(draft.contentText, draft.summary)} words
           </span>
-          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-            {dirty ? 'Saving…' : `Saved ${new Date(article.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-          </span>
-          <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}><Icon name="trash" size={13} /></button>
+          {canEdit && (
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+              {dirty ? 'Saving…' : `Saved ${new Date(article.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+            </span>
+          )}
+          {canEdit && (
+            <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}><Icon name="trash" size={13} /></button>
+          )}
         </div>
       </div>
 
       {/* Summary */}
-      <textarea
-        className="textarea"
-        rows={2}
-        placeholder="One-line summary (shown in lists and graphs)"
-        value={draft.summary}
-        onChange={e => patch('summary', e.target.value)}
-        style={{ marginBottom: 14, fontStyle: 'italic' }}
-      />
+      {(canEdit || draft.summary) && (
+        <textarea
+          className="textarea"
+          rows={2}
+          placeholder="One-line summary (shown in lists and graphs)"
+          value={draft.summary}
+          onChange={e => patch('summary', e.target.value)}
+          style={{ marginBottom: 14, fontStyle: 'italic' }}
+          readOnly={!canEdit}
+        />
+      )}
 
       {/* Category-specific builder OR editor */}
       {draft.category === 'species' && (
@@ -240,6 +291,7 @@ export default function ArticleEditor() {
           initialJson={draft.contentJson}
           articlesIndex={articlesIndex}
           category={draft.category}
+          editable={canEdit}
           onChange={(json, text) => {
             setDraft(d => d ? ({ ...d, contentJson: json, contentText: text }) : d);
             setDirty(true);

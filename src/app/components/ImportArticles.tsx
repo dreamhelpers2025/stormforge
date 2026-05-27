@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { useArticles } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
+import { parseDocxToPayload } from '../lib/docxImport';
 import type { Article, ArticleCategory } from '../types';
 import Icon from './Icon';
 
@@ -53,12 +54,28 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [payload, setPayload] = useState<ArticlesImportPayload | null>(null);
   const [importing, setImporting] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  // Docx headings — H1 sections vs H2 sections. The article heading level is
+  // what becomes one article; the level above it becomes a containing folder.
+  const [docxHeadingLevel, setDocxHeadingLevel] = useState<1 | 2>(2);
+  /** Holds the most recently-picked .docx so the user can re-parse with a
+   *  different heading level without re-choosing the file. */
+  const [docxFile, setDocxFile] = useState<File | null>(null);
 
   if (!open) return null;
 
   async function handleFile(file: File) {
     setError(null);
+    setWarnings([]);
+    const isDocx = file.name.toLowerCase().endsWith('.docx');
+    if (isDocx) {
+      setDocxFile(file);
+      await parseDocxNow(file, docxHeadingLevel);
+      return;
+    }
+    setDocxFile(null);
     try {
       const text = await file.text();
       const json = JSON.parse(text);
@@ -72,6 +89,22 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
     } catch (e: any) {
       setError(e.message ?? String(e));
       setPayload(null);
+    }
+  }
+
+  async function parseDocxNow(file: File, level: 1 | 2) {
+    setParsing(true);
+    setError(null);
+    setWarnings([]);
+    try {
+      const result = await parseDocxToPayload(file, { articleHeadingLevel: level, buildFolders: true });
+      setPayload(result.payload);
+      setWarnings(result.warnings.slice(0, 5));
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+      setPayload(null);
+    } finally {
+      setParsing(false);
     }
   }
 
@@ -127,8 +160,9 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
         <div className="text-eyebrow">Import</div>
         <h2 className="text-display" style={{ fontSize: 20, margin: '6px 0 12px' }}>Add articles to this world</h2>
         <p className="text-mute" style={{ fontSize: 13, lineHeight: 1.55, marginBottom: 14 }}>
-          Upload a Stormforge articles JSON file. Articles are added to <strong>this world</strong>;
-          folder hierarchy in the file is preserved. Your existing articles are not modified.
+          Upload a <strong>Word document (.docx)</strong> — Stormforge will split it by heading
+          into folders and articles — or a Stormforge JSON import file. Either way it's added
+          to <strong>this world</strong>; existing articles aren't touched.
         </p>
 
         {!payload ? (
@@ -137,16 +171,22 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
               className="btn btn-primary"
               style={{ width: '100%' }}
               onClick={() => fileRef.current?.click()}
+              disabled={parsing}
             >
-              <Icon name="upload" size={13} /> Choose JSON file…
+              <Icon name="upload" size={13} /> {parsing ? 'Parsing…' : 'Choose .docx or .json file…'}
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept=".json,application/json"
+              accept=".json,application/json,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
             />
+            <div className="text-dim" style={{ fontSize: 11.5, marginTop: 10, lineHeight: 1.55 }}>
+              <strong>Tip:</strong> For .docx files, use Word's <em>Heading 1</em> / <em>Heading 2</em> styles
+              to mark sections. Heading 1 becomes a folder, Heading 2 becomes an article.
+              Plain bold text won't split anything.
+            </div>
             {error && (
               <div style={{ marginTop: 12, padding: 10, borderRadius: 6, border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 12.5 }}>
                 {error}
@@ -155,6 +195,32 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
           </>
         ) : (
           <>
+            {docxFile && (
+              <div className="sf-card" style={{ padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-mute)' }}>Split docx at:</div>
+                <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6 }}>
+                  <button
+                    className={'btn ' + (docxHeadingLevel === 1 ? 'btn-primary' : 'btn-ghost')}
+                    style={{ padding: '4px 10px', fontSize: 11 }}
+                    onClick={() => { setDocxHeadingLevel(1); parseDocxNow(docxFile, 1); }}
+                    disabled={parsing}
+                  >
+                    Heading 1
+                  </button>
+                  <button
+                    className={'btn ' + (docxHeadingLevel === 2 ? 'btn-primary' : 'btn-ghost')}
+                    style={{ padding: '4px 10px', fontSize: 11 }}
+                    onClick={() => { setDocxHeadingLevel(2); parseDocxNow(docxFile, 2); }}
+                    disabled={parsing}
+                  >
+                    Heading 2
+                  </button>
+                </div>
+                <div className="text-dim" style={{ fontSize: 11, flex: 1, minWidth: 0 }}>
+                  {parsing ? 'Re-parsing…' : 'Each block at this level becomes one article.'}
+                </div>
+              </div>
+            )}
             <div className="sf-card" style={{ padding: 14, marginBottom: 14 }}>
               {payload.description && (
                 <div className="text-serif" style={{ fontStyle: 'italic', fontSize: 13, color: 'var(--text-mute)', marginBottom: 8 }}>
@@ -180,13 +246,21 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
                 )}
               </ul>
             </div>
+            {warnings.length > 0 && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 6, border: '1px solid var(--ember)', color: 'var(--text-mute)', fontSize: 11.5, lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--ember)' }}>Conversion notes:</strong>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  {warnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              </div>
+            )}
             {error && (
               <div style={{ marginBottom: 12, padding: 10, borderRadius: 6, border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 12.5 }}>
                 {error}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <button className="btn btn-ghost" onClick={() => setPayload(null)}>Choose different file</button>
+              <button className="btn btn-ghost" onClick={() => { setPayload(null); setDocxFile(null); setWarnings([]); }}>Choose different file</button>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
                 <button className="btn btn-primary" onClick={doImport} disabled={importing}>

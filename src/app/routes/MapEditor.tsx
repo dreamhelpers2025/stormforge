@@ -9,6 +9,7 @@ import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { compressImageDataUrl, fileToDataUrl } from '../lib/imageCompress';
+import { useCanEditWorld } from '../lib/useCanEdit';
 import { MAP_STYLE_PRESETS, getEffectiveBackground, getInkColor, isLightStyle } from '../lib/mapStyles';
 import { STAMPS, STAMPS_BY_CATEGORY, CATEGORY_LABELS, getStamp, type StampCategory } from '../lib/mapStamps';
 import type { MapData, MapPin, MapRegion, MapStamp, MapStyle, PinKind, Article } from '../types';
@@ -54,6 +55,7 @@ export default function MapEditor() {
   const push = useToast(s => s.push);
 
   const map = useMemo(() => maps.find(m => m.id === mapId), [maps, mapId]);
+  const canEdit = useCanEditWorld(worldId);
 
   // Local interaction state
   const [tool, setTool] = useState<Tool>('pan');
@@ -89,6 +91,10 @@ export default function MapEditor() {
   if (!map) return <EmptyState title="Map not found" />;
 
   function patchMap(p: Partial<MapData>) {
+    // Viewers see the map but can't change it. Belt-and-suspenders: the
+    // toolbar already hides mutation tools, but if any handler still calls
+    // through (keyboard shortcut, drag handle, etc.) we silently drop it.
+    if (!canEdit) return;
     // Snapshot the previous canvas-editable state into history when this
     // patch touches one of those fields. Coalesce inside a short window so
     // a multi-frame drag produces exactly one undo step.
@@ -454,14 +460,24 @@ export default function MapEditor() {
             style={{ width: 'auto', fontFamily: 'Cinzel, serif', letterSpacing: '0.05em', fontSize: 16, background: 'transparent', border: 'none', padding: '4px 6px' }}
             value={map.name}
             onChange={e => patchMap({ name: e.target.value })}
+            readOnly={!canEdit}
           />
           <div style={{ width: 1, height: 24, background: 'var(--border)' }} />
 
-          <ToolBtn active={tool === 'pan'} onClick={() => setTool('pan')} icon="globe" label="Pan" />
-          <ToolBtn active={tool === 'pin'} onClick={() => setTool('pin')} icon="plus" label="Place pin" />
-          <ToolBtn active={tool === 'stamp'} onClick={() => setTool('stamp')} icon="image" label="Stamp" />
-          <ToolBtn active={tool === 'region'} onClick={() => setTool('region')} icon="shield" label="Draw region" />
-          <ToolBtn active={tool === 'edit'} onClick={() => setTool('edit')} icon="edit" label="Select & move" />
+          {canEdit ? (
+            <>
+              <ToolBtn active={tool === 'pan'} onClick={() => setTool('pan')} icon="globe" label="Pan" />
+              <ToolBtn active={tool === 'pin'} onClick={() => setTool('pin')} icon="plus" label="Place pin" />
+              <ToolBtn active={tool === 'stamp'} onClick={() => setTool('stamp')} icon="image" label="Stamp" />
+              <ToolBtn active={tool === 'region'} onClick={() => setTool('region')} icon="shield" label="Draw region" />
+              <ToolBtn active={tool === 'edit'} onClick={() => setTool('edit')} icon="edit" label="Select & move" />
+            </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--ember)' }}>
+              <Icon name="eye" size={12} /> <strong style={{ letterSpacing: '0.12em' }}>READ-ONLY</strong>
+              <span style={{ color: 'var(--text-mute)', fontWeight: 400 }}>shared as viewer · pan & zoom only</span>
+            </div>
+          )}
 
           {tool === 'pin' && (
             <select className="select" style={{ width: 'auto' }} value={pendingKind} onChange={e => setPendingKind(e.target.value as PinKind)}>
