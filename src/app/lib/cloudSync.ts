@@ -29,6 +29,7 @@ import {
 import { useWorlds } from '../stores/useWorlds';
 import { useArticles } from '../stores/useArticles';
 import { useMaps } from '../stores/useMaps';
+import { useMembers } from '../stores/useMembers';
 import type { Article, World, MapData, ScratchpadNote, ArticleRevision } from '../types';
 
 let currentUserId: string | null = null;
@@ -46,6 +47,42 @@ function ensureSignedIn(): string | null {
     return null;
   }
   return currentUserId;
+}
+
+/**
+ * Worlds the current user is allowed to write to. Anything outside this set
+ * — e.g. articles from a world that was shared with us as viewer-only, or
+ * leftover data from another account in a shared-browser scenario — must
+ * NOT be pushed to the cloud, because RLS will (correctly) reject it.
+ *
+ * Reads from already-hydrated stores; if those aren't ready yet we fall back
+ * to "anything goes" so we don't block normal startup sync.
+ */
+function getEditableWorldIds(): Set<string> | null {
+  const worlds = useWorlds.getState().worlds;
+  // If worlds haven't hydrated yet, don't filter — caller treats null as
+  // "skip the filter for now".
+  if (!worlds || worlds.length === 0) return null;
+  const myRoles = useMembers.getState().myMemberRoles ?? {};
+  const ids = new Set<string>();
+  for (const w of worlds) {
+    // Pre-sharing rows with no ownerUserId: treat as our own (backfill happens
+    // elsewhere). Owner === current user: definitely ours. Editor on a shared
+    // world: can write. Viewer-or-unknown: cannot.
+    if (!w.ownerUserId || w.ownerUserId === currentUserId) {
+      ids.add(w.id);
+    } else if (myRoles[w.id] === 'editor') {
+      ids.add(w.id);
+    }
+  }
+  return ids;
+}
+
+/** True if the current user can push rows belonging to this worldId. */
+function canEditWorld(worldId: string): boolean {
+  const editable = getEditableWorldIds();
+  if (editable === null) return true; // worlds store not hydrated yet — don't block
+  return editable.has(worldId);
 }
 
 /**
@@ -222,7 +259,18 @@ async function reconcileArticles(userId: string) {
   if (metaErr) throw metaErr;
 
   const localRows = await db.articles.toArray();
-  const { idsToPull, toPushUp } = planDelta<Article>(meta ?? [], localRows);
+  const { idsToPull, toPushUp: rawPush } = planDelta<Article>(meta ?? [], localRows);
+  // Don't try to push rows from worlds we don't own/edit — RLS will reject
+  // them. Most common cause: shared-browser IndexedDB containing another
+  // account's data, or articles from a world shared with us as viewer-only.
+  const editable = getEditableWorldIds();
+  const toPushUp = editable === null
+    ? rawPush
+    : rawPush.filter(a => editable.has(a.worldId));
+  const skipped = rawPush.length - toPushUp.length;
+  if (skipped > 0) {
+    console.warn(`[cloudSync] reconcile.articles: skipping ${skipped} article(s) from worlds the current user cannot edit.`);
+  }
 
   if (idsToPull.length) {
     const PULL_CHUNK = 5;
@@ -271,7 +319,14 @@ async function reconcileMaps(userId: string) {
   if (metaErr) throw metaErr;
 
   const localRows = await db.maps.toArray();
-  const { idsToPull, toPushUp } = planDelta<MapData>(meta ?? [], localRows);
+  const { idsToPull, toPushUp: rawMapPush } = planDelta<MapData>(meta ?? [], localRows);
+  const editableM = getEditableWorldIds();
+  const toPushUp = editableM === null
+    ? rawMapPush
+    : rawMapPush.filter(m => editableM.has(m.worldId));
+  if (rawMapPush.length - toPushUp.length > 0) {
+    console.warn(`[cloudSync] reconcile.maps: skipping ${rawMapPush.length - toPushUp.length} map(s) from worlds the current user cannot edit.`);
+  }
 
   if (idsToPull.length) {
     for (let i = 0; i < idsToPull.length; i += 5) {
@@ -312,7 +367,17 @@ async function reconcileNotes(userId: string) {
   const localIds = new Set(localRows.map(n => n.id));
   for (const r of cloudRows) if (!localIds.has(r.id)) toPushDown.push(r);
   const cloudIds = new Set(cloudRows.map(n => n.id));
-  const toPushUp = localRows.filter(n => !cloudIds.has(n.id));
+  const rawNotePush = localRows.filter(n => !cloudIds.has(n.id));
+  const editableN = getEditableWorldIds();
+  // Notes with worldId=null are global / user-personal; we let them through.
+  // Notes scoped to a world we can't edit are skipped (probably leftovers
+  // from another account in a shared-browser scenario).
+  const toPushUp = editableN === null
+    ? rawNotePush
+    : rawNotePush.filter(n => n.worldId == null || editableN.has(n.worldId));
+  if (rawNotePush.length - toPushUp.length > 0) {
+    console.warn(`[cloudSync] reconcile.notes: skipping ${rawNotePush.length - toPushUp.length} note(s) from worlds the current user cannot edit.`);
+  }
   if (toPushDown.length) await db.scratchpad.bulkPut(toPushDown);
   if (toPushUp.length) {
     const { error: upErr } = await withRetry(
@@ -350,7 +415,14 @@ async function reconcileRevisions(userId: string) {
     }
   }
 
-  const toPushUp = localRows.filter(r => !cloudIdSet.has(r.id));
+  const rawRevPush = localRows.filter(r => !cloudIdSet.has(r.id));
+  const editableR = getEditableWorldIds();
+  const toPushUp = editableR === null
+    ? rawRevPush
+    : rawRevPush.filter(r => editableR.has(r.worldId));
+  if (rawRevPush.length - toPushUp.length > 0) {
+    console.warn(`[cloudSync] reconcile.revisions: skipping ${rawRevPush.length - toPushUp.length} revision(s) from worlds the current user cannot edit.`);
+  }
   if (toPushUp.length) {
     for (let i = 0; i < toPushUp.length; i += 10) {
       const slice = toPushUp.slice(i, i + 10);
@@ -387,6 +459,10 @@ export function deleteWorld(id: string) {
 
 export function upsertArticle(a: Article) {
   const uid = ensureSignedIn(); if (!uid) return;
+  if (!canEditWorld(a.worldId)) {
+    console.warn(`[cloudSync] upsertArticle: skipping article "${a.title}" — current user can't edit world ${a.worldId}.`);
+    return;
+  }
   runOp(() => withRetry(
     () => supabase.from('articles').upsert(articleToCloud(a, uid)).then(throwIfErr),
     'upsertArticle'
@@ -402,6 +478,14 @@ export function upsertArticle(a: Article) {
 export function bulkUpsertArticles(articles: Article[]) {
   const uid = ensureSignedIn(); if (!uid) return;
   if (articles.length === 0) return;
+  // Drop any articles from worlds we can't edit so we don't fail RLS on import.
+  const editable = getEditableWorldIds();
+  const filtered = editable === null ? articles : articles.filter(a => editable.has(a.worldId));
+  if (filtered.length === 0) return;
+  if (filtered.length < articles.length) {
+    console.warn(`[cloudSync] bulkUpsertArticles: dropped ${articles.length - filtered.length} article(s) from non-editable worlds.`);
+  }
+  articles = filtered;
   runOp(async () => {
     const CHUNK = 10;
     for (let i = 0; i < articles.length; i += CHUNK) {
@@ -437,6 +521,10 @@ export function deleteArticle(id: string) {
 
 export function upsertMap(m: MapData) {
   const uid = ensureSignedIn(); if (!uid) return;
+  if (!canEditWorld(m.worldId)) {
+    console.warn(`[cloudSync] upsertMap: skipping map "${m.name}" — current user can't edit world ${m.worldId}.`);
+    return;
+  }
   runOp(() => withRetry(
     () => supabase.from('maps').upsert(mapToCloud(m, uid)).then(throwIfErr),
     'upsertMap'
@@ -452,6 +540,10 @@ export function deleteMap(id: string) {
 
 export function upsertNote(n: ScratchpadNote) {
   const uid = ensureSignedIn(); if (!uid) return;
+  if (n.worldId != null && !canEditWorld(n.worldId)) {
+    console.warn(`[cloudSync] upsertNote: skipping note — current user can't edit world ${n.worldId}.`);
+    return;
+  }
   runOp(() => withRetry(
     () => supabase.from('scratchpad_notes').upsert(noteToCloud(n, uid)).then(throwIfErr),
     'upsertNote'
@@ -467,6 +559,10 @@ export function deleteNote(id: string) {
 
 export function upsertRevision(r: ArticleRevision) {
   const uid = ensureSignedIn(); if (!uid) return;
+  if (!canEditWorld(r.worldId)) {
+    console.warn(`[cloudSync] upsertRevision: skipping — current user can't edit world ${r.worldId}.`);
+    return;
+  }
   runOp(() => withRetry(
     () => supabase.from('article_revisions').upsert(revisionToCloud(r, uid)).then(throwIfErr),
     'upsertRevision'
