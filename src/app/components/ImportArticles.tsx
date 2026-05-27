@@ -3,6 +3,8 @@ import { nanoid } from 'nanoid';
 import { useArticles } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
 import { parseDocxToPayload } from '../lib/docxImport';
+import { parseSheetFile, suggestMapping, buildArticlesFromMapping, type SheetParseResult, type SheetMapping } from '../lib/sheetImport';
+import { CATEGORIES, CATEGORY_MAP } from '../lib/categories';
 import type { Article, ArticleCategory } from '../types';
 import Icon from './Icon';
 
@@ -64,18 +66,33 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
    *  different heading level without re-choosing the file. */
   const [docxFile, setDocxFile] = useState<File | null>(null);
 
+  // Sheet (.xlsx / .csv) state.
+  const [sheetFile, setSheetFile] = useState<File | null>(null);
+  const [sheetParse, setSheetParse] = useState<SheetParseResult | null>(null);
+  const [sheetMapping, setSheetMapping] = useState<SheetMapping | null>(null);
+
   if (!open) return null;
 
   async function handleFile(file: File) {
     setError(null);
     setWarnings([]);
-    const isDocx = file.name.toLowerCase().endsWith('.docx');
+    const name = file.name.toLowerCase();
+    const isDocx = name.endsWith('.docx');
+    const isSheet = name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv');
     if (isDocx) {
       setDocxFile(file);
+      setSheetFile(null); setSheetParse(null); setSheetMapping(null);
       await parseDocxNow(file, docxHeadingLevel);
       return;
     }
+    if (isSheet) {
+      setDocxFile(null);
+      setSheetFile(file);
+      await parseSheetNow(file);
+      return;
+    }
     setDocxFile(null);
+    setSheetFile(null); setSheetParse(null); setSheetMapping(null);
     try {
       const text = await file.text();
       const json = JSON.parse(text);
@@ -90,6 +107,44 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
       setError(e.message ?? String(e));
       setPayload(null);
     }
+  }
+
+  async function parseSheetNow(file: File, sheetName?: string) {
+    setParsing(true);
+    setError(null);
+    setWarnings([]);
+    setPayload(null);
+    try {
+      const result = await parseSheetFile(file, sheetName);
+      if (result.rows.length === 0) {
+        throw new Error('No rows found in the sheet. Make sure the first row is your column headers and there\'s at least one row of data below.');
+      }
+      const suggested = suggestMapping(result.columns);
+      const initialMapping: SheetMapping = {
+        titleColumn: suggested.titleColumn ?? result.columns[0],
+        summaryColumn: suggested.summaryColumn,
+        bodyColumns: suggested.bodyColumns ?? [],
+        tagsColumn: suggested.tagsColumn,
+        categoryColumn: suggested.categoryColumn,
+        defaultCategory: 'note',
+      };
+      setSheetParse(result);
+      setSheetMapping(initialMapping);
+      // Build initial preview payload so the user sees something right away.
+      setPayload(buildArticlesFromMapping(result.rows, initialMapping));
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+      setSheetParse(null);
+      setSheetMapping(null);
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  /** Recompute the preview payload whenever the mapping changes. */
+  function applyMappingChange(next: SheetMapping) {
+    setSheetMapping(next);
+    if (sheetParse) setPayload(buildArticlesFromMapping(sheetParse.rows, next));
   }
 
   async function parseDocxNow(file: File, level: 1 | 2) {
@@ -160,9 +215,10 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
         <div className="text-eyebrow">Import</div>
         <h2 className="text-display" style={{ fontSize: 20, margin: '6px 0 12px' }}>Add articles to this world</h2>
         <p className="text-mute" style={{ fontSize: 13, lineHeight: 1.55, marginBottom: 14 }}>
-          Upload a <strong>Word document (.docx)</strong> — Stormforge will split it by heading
-          into folders and articles — or a Stormforge JSON import file. Either way it's added
-          to <strong>this world</strong>; existing articles aren't touched.
+          Upload a <strong>Word doc (.docx)</strong> — split by heading into folders and articles —
+          a <strong>spreadsheet (.xlsx, .csv)</strong> — one article per row, you map the columns —
+          or a Stormforge JSON file. Either way it's added to <strong>this world</strong>;
+          existing articles aren't touched.
         </p>
 
         {!payload ? (
@@ -173,19 +229,18 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
               onClick={() => fileRef.current?.click()}
               disabled={parsing}
             >
-              <Icon name="upload" size={13} /> {parsing ? 'Parsing…' : 'Choose .docx or .json file…'}
+              <Icon name="upload" size={13} /> {parsing ? 'Parsing…' : 'Choose .docx, .xlsx, .csv, or .json…'}
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept=".json,application/json,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".json,application/json,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.csv,text/csv,.xls,application/vnd.ms-excel"
               style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
             />
             <div className="text-dim" style={{ fontSize: 11.5, marginTop: 10, lineHeight: 1.55 }}>
-              <strong>Tip:</strong> For .docx files, use Word's <em>Heading 1</em> / <em>Heading 2</em> styles
-              to mark sections. Heading 1 becomes a folder, Heading 2 becomes an article.
-              Plain bold text won't split anything.
+              <strong>From Google Docs:</strong> File → Download → Microsoft Word (.docx).<br />
+              <strong>From Google Sheets:</strong> File → Download → Microsoft Excel (.xlsx) — first row should be column headers, each row becomes one article.
             </div>
             {error && (
               <div style={{ marginTop: 12, padding: 10, borderRadius: 6, border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 12.5 }}>
@@ -195,6 +250,14 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
           </>
         ) : (
           <>
+            {sheetFile && sheetParse && sheetMapping && (
+              <SheetMappingPanel
+                parse={sheetParse}
+                mapping={sheetMapping}
+                onMappingChange={applyMappingChange}
+                onSheetChange={(name) => parseSheetNow(sheetFile, name)}
+              />
+            )}
             {docxFile && (
               <div className="sf-card" style={{ padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-mute)' }}>Split docx at:</div>
@@ -260,7 +323,7 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <button className="btn btn-ghost" onClick={() => { setPayload(null); setDocxFile(null); setWarnings([]); }}>Choose different file</button>
+              <button className="btn btn-ghost" onClick={() => { setPayload(null); setDocxFile(null); setSheetFile(null); setSheetParse(null); setSheetMapping(null); setWarnings([]); }}>Choose different file</button>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
                 <button className="btn btn-primary" onClick={doImport} disabled={importing}>
@@ -278,5 +341,133 @@ export default function ImportArticles({ worldId, open, onClose }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Sheet column → article field mapping UI. */
+function SheetMappingPanel({
+  parse,
+  mapping,
+  onMappingChange,
+  onSheetChange,
+}: {
+  parse: SheetParseResult;
+  mapping: SheetMapping;
+  onMappingChange: (next: SheetMapping) => void;
+  onSheetChange: (sheetName: string) => void;
+}) {
+  // Filter out 'folder' from the user-pickable categories — articles
+  // imported from a sheet shouldn't become folders themselves.
+  const pickableCategories = CATEGORIES.filter(c => c.key !== 'folder');
+  const cols = parse.columns;
+
+  return (
+    <div className="sf-card" style={{ padding: 14, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div className="text-eyebrow">Column mapping</div>
+        {parse.allSheets.length > 1 && (
+          <label style={{ fontSize: 11.5, color: 'var(--text-mute)' }}>
+            Sheet:&nbsp;
+            <select
+              className="select"
+              value={parse.sheetName}
+              onChange={e => onSheetChange(e.target.value)}
+              style={{ width: 'auto', display: 'inline-block', padding: '4px 8px', fontSize: 12 }}
+            >
+              {parse.allSheets.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <FieldPick
+          label="Title (required)"
+          value={mapping.titleColumn}
+          onChange={v => onMappingChange({ ...mapping, titleColumn: v })}
+          columns={cols}
+        />
+        <FieldPick
+          label="Default category"
+          value={mapping.defaultCategory}
+          onChange={v => onMappingChange({ ...mapping, defaultCategory: v as ArticleCategory })}
+          columns={pickableCategories.map(c => c.key)}
+          renderLabel={(v) => CATEGORY_MAP[v as ArticleCategory]?.label ?? v}
+        />
+        <FieldPick
+          label="Category column (optional)"
+          value={mapping.categoryColumn ?? ''}
+          onChange={v => onMappingChange({ ...mapping, categoryColumn: v || undefined })}
+          columns={cols}
+          allowNone
+          hint="If a row's value matches a known category key, that row uses it."
+        />
+        <FieldPick
+          label="Summary column (optional)"
+          value={mapping.summaryColumn ?? ''}
+          onChange={v => onMappingChange({ ...mapping, summaryColumn: v || undefined })}
+          columns={cols}
+          allowNone
+        />
+        <FieldPick
+          label="Body column (optional)"
+          value={mapping.bodyColumns[0] ?? ''}
+          onChange={v => onMappingChange({ ...mapping, bodyColumns: v ? [v] : [] })}
+          columns={cols}
+          allowNone
+          hint="Long-form text. Becomes the article's content."
+        />
+        <FieldPick
+          label="Tags column (optional)"
+          value={mapping.tagsColumn ?? ''}
+          onChange={v => onMappingChange({ ...mapping, tagsColumn: v || undefined })}
+          columns={cols}
+          allowNone
+          hint="Comma- or semicolon-separated values become tags."
+        />
+      </div>
+
+      <div className="text-dim" style={{ fontSize: 11, lineHeight: 1.5 }}>
+        Unmapped columns are kept on each article under <code>meta.extra</code>, so no data
+        is lost — you can still see them later by opening any imported article and inspecting it.
+      </div>
+    </div>
+  );
+}
+
+/** One labeled dropdown for the mapping UI. */
+function FieldPick({
+  label,
+  value,
+  onChange,
+  columns,
+  allowNone = false,
+  hint,
+  renderLabel,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  columns: string[];
+  allowNone?: boolean;
+  hint?: string;
+  renderLabel?: (v: string) => string;
+}) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <span style={{ fontSize: 11, color: 'var(--text-mute)', letterSpacing: '0.04em' }}>{label}</span>
+      <select
+        className="select"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ fontSize: 12.5 }}
+      >
+        {allowNone && <option value="">— none —</option>}
+        {columns.map(c => (
+          <option key={c} value={c}>{renderLabel ? renderLabel(c) : c}</option>
+        ))}
+      </select>
+      {hint && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{hint}</span>}
+    </label>
   );
 }
