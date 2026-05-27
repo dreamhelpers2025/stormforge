@@ -32,6 +32,18 @@ const REGION_COLORS = ['#43C7C7', '#B88A3B', '#B0413E', '#6ed099', '#c084fc', '#
 
 type Tool = 'pan' | 'pin' | 'region' | 'stamp' | 'edit';
 
+/** Snapshot of the canvas-editable fields used for undo/redo. */
+interface HistoryEntry {
+  pins: MapPin[];
+  regions: MapRegion[];
+  stamps: MapStamp[];
+}
+/** Hard cap on history length so memory doesn't grow unbounded. */
+const HISTORY_LIMIT = 60;
+/** Coalesce window (ms) — drag operations emit many patchMap calls; we want
+ *  exactly one history entry per drag, capturing the pre-drag state. */
+const HISTORY_COALESCE_MS = 120;
+
 export default function MapEditor() {
   const { worldId = '', mapId = '' } = useParams();
   const navigate = useNavigate();
@@ -56,6 +68,13 @@ export default function MapEditor() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [confirmDeleteMap, setConfirmDeleteMap] = useState(false);
 
+  // Undo/redo history. We snapshot only the canvas-editable fields
+  // (pins/regions/stamps) — background/style changes happen in the side
+  // panel and are easier to revert by re-picking the option.
+  const [historyPast, setHistoryPast] = useState<HistoryEntry[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<HistoryEntry[]>([]);
+  const lastSnapshotAt = useRef(0);
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const isPanning = useRef<{ x: number; y: number } | null>(null);
   const draggingPin = useRef<string | null>(null);
@@ -69,7 +88,62 @@ export default function MapEditor() {
 
   if (!map) return <EmptyState title="Map not found" />;
 
-  function patchMap(p: Partial<MapData>) { updateMap(mapId, p); }
+  function patchMap(p: Partial<MapData>) {
+    // Snapshot the previous canvas-editable state into history when this
+    // patch touches one of those fields. Coalesce inside a short window so
+    // a multi-frame drag produces exactly one undo step.
+    const touchesCanvas = 'pins' in p || 'regions' in p || 'stamps' in p;
+    if (touchesCanvas) {
+      const now = Date.now();
+      if (now - lastSnapshotAt.current > HISTORY_COALESCE_MS) {
+        const snap: HistoryEntry = {
+          pins: map.pins,
+          regions: map.regions,
+          stamps,
+        };
+        setHistoryPast(h => {
+          const next = [...h, snap];
+          if (next.length > HISTORY_LIMIT) next.shift();
+          return next;
+        });
+        // A fresh user action clears any redo we'd built up.
+        setHistoryFuture([]);
+      }
+      lastSnapshotAt.current = now;
+    }
+    updateMap(mapId, p);
+  }
+
+  function undo() {
+    if (historyPast.length === 0) return;
+    const prev = historyPast[historyPast.length - 1];
+    const cur: HistoryEntry = {
+      pins: map.pins,
+      regions: map.regions,
+      stamps,
+    };
+    setHistoryPast(h => h.slice(0, -1));
+    setHistoryFuture(h => [...h, cur]);
+    // Apply directly via updateMap so we don't re-snapshot.
+    updateMap(mapId, { pins: prev.pins, regions: prev.regions, stamps: prev.stamps });
+    // Clear any selection that points at something the prev state lacks.
+    if (selectedPin && !prev.pins.some(p => p.id === selectedPin)) setSelectedPin(null);
+    if (selectedRegion && !prev.regions.some(r => r.id === selectedRegion)) setSelectedRegion(null);
+    if (selectedStamp && !prev.stamps.some(s => s.id === selectedStamp)) setSelectedStamp(null);
+  }
+
+  function redo() {
+    if (historyFuture.length === 0) return;
+    const next = historyFuture[historyFuture.length - 1];
+    const cur: HistoryEntry = {
+      pins: map.pins,
+      regions: map.regions,
+      stamps,
+    };
+    setHistoryFuture(h => h.slice(0, -1));
+    setHistoryPast(h => [...h, cur]);
+    updateMap(mapId, { pins: next.pins, regions: next.regions, stamps: next.stamps });
+  }
 
   function svgCoords(clientX: number, clientY: number): { x: number; y: number } {
     const el = wrapperRef.current;
@@ -95,11 +169,10 @@ export default function MapEditor() {
       setTool('edit');
       push('Pin placed. Click it to edit.', 'success');
     } else if (tool === 'region') {
-      // Only the polygon (click-each-corner) mode uses click-to-add.
-      // Freehand is driven by mousedown/move/up — see handleMouseDown.
-      if (regionMode !== 'polygon') return;
-      const { x, y } = svgCoords(e.clientX, e.clientY);
-      setPendingRegionPoints(p => [...p, [x, y]]);
+      // Polygon vertex placement now happens on mousedown (see
+      // handleMouseDown). Freehand draws on mousedown→drag→up. So this
+      // click handler has nothing to do for the region tool.
+      return;
     } else if (tool === 'stamp') {
       const { x, y } = svgCoords(e.clientX, e.clientY);
       const def = getStamp(pendingStampKey) ?? STAMPS[0];
@@ -273,6 +346,13 @@ export default function MapEditor() {
       const { x, y } = svgCoords(e.clientX, e.clientY);
       isFreehandDrawing.current = true;
       setPendingRegionPoints([[x, y]]);
+    } else if (tool === 'region' && regionMode === 'polygon') {
+      // Polygon vertex placement on mousedown (not click) so the dot lands
+      // exactly where the user pressed — no drift between mousedown and
+      // mouseup. Don't do this for the secondary mouse button.
+      if (e.button !== 0) return;
+      const { x, y } = svgCoords(e.clientX, e.clientY);
+      setPendingRegionPoints(p => [...p, [x, y]]);
     }
   }
 
@@ -315,6 +395,44 @@ export default function MapEditor() {
     const compressed = await compressImageDataUrl(raw, 2400, 0.85);
     patchMap({ background: compressed, aspectRatio: aspect, style: 'image' });
   }
+
+  // Keyboard shortcuts: Ctrl/Cmd+Z undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redo,
+  // Delete/Backspace removes selection, Escape cancels in-progress drawing.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tgt = e.target as HTMLElement | null;
+      // Don't steal keys from form fields or rich-text inputs.
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT' || tgt.isContentEditable)) {
+        return;
+      }
+      const meta = e.ctrlKey || e.metaKey;
+      if (meta && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (meta && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedPin) { deletePin(selectedPin); e.preventDefault(); return; }
+        if (selectedRegion) { deleteRegion(selectedRegion); e.preventDefault(); return; }
+        if (selectedStamp) { deleteStamp(selectedStamp); e.preventDefault(); return; }
+      }
+      if (e.key === 'Escape') {
+        if (pendingRegionPoints.length > 0) { setPendingRegionPoints([]); isFreehandDrawing.current = false; return; }
+        if (selectedPin || selectedRegion || selectedStamp) {
+          setSelectedPin(null);
+          setSelectedRegion(null);
+          setSelectedStamp(null);
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [historyPast, historyFuture, map, selectedPin, selectedRegion, selectedStamp, pendingRegionPoints]);
 
   const selPin = map.pins.find(p => p.id === selectedPin);
   const selRegion = map.regions.find(r => r.id === selectedRegion);
@@ -398,6 +516,23 @@ export default function MapEditor() {
           )}
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              className="btn btn-ghost btn-icon"
+              title="Undo (Ctrl+Z)"
+              onClick={undo}
+              disabled={historyPast.length === 0}
+            >
+              <Icon name="undo" size={13} />
+            </button>
+            <button
+              className="btn btn-ghost btn-icon"
+              title="Redo (Ctrl+Y)"
+              onClick={redo}
+              disabled={historyFuture.length === 0}
+            >
+              <Icon name="redo" size={13} />
+            </button>
+            <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
             <button className="btn btn-ghost btn-icon" title="Zoom in" onClick={() => setZoom(z => clamp(z + 0.2, 0.4, 4))}><Icon name="plus" size={13} /></button>
             <span className="text-mute" style={{ fontSize: 12, minWidth: 36, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
             <button className="btn btn-ghost btn-icon" title="Zoom out" onClick={() => setZoom(z => clamp(z - 0.2, 0.4, 4))}><Icon name="x" size={13} /></button>
@@ -794,7 +929,7 @@ function PinDetail({ pin, articles, worldId, onUpdate, onDelete, onOpenArticle, 
       </div>
 
       <button className="btn btn-danger" onClick={onDelete} style={{ width: '100%' }}>
-        <Icon name="trash" size={13} /> Delete pin
+        <Icon name="trash" size={13} /> Delete pin <span style={{ opacity: 0.7, fontWeight: 400, fontSize: 11 }}>(or press Del)</span>
       </button>
     </div>
   );
@@ -851,7 +986,7 @@ function RegionDetail({ region, articles, worldId, onUpdate, onDelete, onOpenArt
       </div>
 
       <button className="btn btn-danger" onClick={onDelete} style={{ width: '100%' }}>
-        <Icon name="trash" size={13} /> Delete region
+        <Icon name="trash" size={13} /> Delete region <span style={{ opacity: 0.7, fontWeight: 400, fontSize: 11 }}>(or press Del)</span>
       </button>
     </div>
   );
@@ -936,8 +1071,10 @@ function MapSettingsPanel({ map, onPatch, onUploadBg, onDelete, pinCount, region
         • <strong>Pan</strong>: click & drag · <strong>Wheel</strong>: zoom<br />
         • <strong>Pin</strong>: click to drop — labels & article links<br />
         • <strong>Stamp</strong>: scatter decorative scenery<br />
-        • <strong>Region</strong>: click vertices, then "Finish region"<br />
-        • <strong>Select</strong>: click anything to edit, drag pins/stamps to move
+        • <strong>Region</strong>: freehand drag, or polygon click-corners<br />
+        • <strong>Select</strong>: click anything to edit, drag pins/stamps to move<br />
+        • <strong>Ctrl+Z</strong>: undo · <strong>Ctrl+Y</strong>: redo<br />
+        • <strong>Del</strong>: delete selection · <strong>Esc</strong>: cancel drawing
       </div>
 
       <div className="rune-divider-app" />
@@ -1018,7 +1155,7 @@ function StampDetail({ stamp, onUpdate, onDelete, onClose }: {
       </div>
 
       <button className="btn btn-danger" onClick={onDelete} style={{ width: '100%' }}>
-        <Icon name="trash" size={13} /> Delete stamp
+        <Icon name="trash" size={13} /> Delete stamp <span style={{ opacity: 0.7, fontWeight: 400, fontSize: 11 }}>(or press Del)</span>
       </button>
     </div>
   );
