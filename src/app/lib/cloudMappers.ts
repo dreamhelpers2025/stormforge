@@ -8,6 +8,7 @@ import type { World, Article, MapData, ScratchpadNote, ArticleRevision } from '.
 export function worldFromCloud(row: any): World {
   return {
     id: row.id,
+    ownerUserId: row.user_id ?? undefined,
     name: row.name ?? '',
     tagline: row.tagline ?? '',
     description: row.description ?? '',
@@ -22,7 +23,9 @@ export function worldFromCloud(row: any): World {
 export function worldToCloud(w: World, userId: string) {
   return {
     id: w.id,
-    user_id: userId,
+    // Preserve the world's owner — never overwrite with the acting user.
+    // (Editors can update articles via RLS; world rows stay owner-only.)
+    user_id: w.ownerUserId || userId,
     name: w.name,
     tagline: w.tagline,
     description: w.description,

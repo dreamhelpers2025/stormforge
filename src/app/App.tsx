@@ -22,6 +22,8 @@ import { useWorlds } from './stores/useWorlds';
 import { useArticles } from './stores/useArticles';
 import { useAuth } from './stores/useAuth';
 import { useProfile } from './stores/useProfile';
+import { useMembers } from './stores/useMembers';
+import { useToast } from './stores/useToast';
 import { useSync } from './stores/useSync';
 import { reconcileAll, resync, setCurrentUser } from './lib/cloudSync';
 import { CATEGORY_MAP } from './lib/categories';
@@ -76,8 +78,19 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
     if (!ready) return;
     if (user) {
       setCurrentUser(user.id);
-      reconcileAll(user.id).catch(() => {});
-      useProfile.getState().hydrate().catch(() => {});
+      (async () => {
+        // Claim any pending invites first — that way the next reconcile picks
+        // up newly-accessible worlds.
+        try {
+          const claimed = await useMembers.getState().claimInvites();
+          if (claimed > 0) {
+            useToast.getState().push(`Joined ${claimed} shared world${claimed === 1 ? '' : 's'}.`, 'success');
+          }
+        } catch {}
+        try { await useMembers.getState().hydrate(); } catch {}
+        reconcileAll(user.id).catch(() => {});
+        useProfile.getState().hydrate().catch(() => {});
+      })();
     } else {
       setCurrentUser(null);
     }

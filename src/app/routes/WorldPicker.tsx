@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorlds } from '../stores/useWorlds';
 import { useSettings } from '../stores/useSettings';
+import { useAuth } from '../stores/useAuth';
+import { useMembers } from '../stores/useMembers';
 import { useToast } from '../stores/useToast';
 import { db } from '../db';
 import { importWorld, exportWorld, downloadJSON } from '../lib/export';
@@ -18,6 +20,17 @@ export default function WorldPicker() {
   const removeWorld = useWorlds(s => s.remove);
   const setActiveWorld = useSettings(s => s.setActiveWorld);
   const push = useToast(s => s.push);
+  const currentUserId = useAuth(s => s.user?.id ?? null);
+  const myMemberRoles = useMembers(s => s.myMemberRoles);
+
+  const ownedWorlds = useMemo(
+    () => worlds.filter(w => !w.ownerUserId || !currentUserId || w.ownerUserId === currentUserId),
+    [worlds, currentUserId]
+  );
+  const sharedWorlds = useMemo(
+    () => worlds.filter(w => w.ownerUserId && currentUserId && w.ownerUserId !== currentUserId),
+    [worlds, currentUserId]
+  );
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -96,39 +109,43 @@ export default function WorldPicker() {
           action={<button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" size={14} /> Forge your first world</button>}
         />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {worlds.map(w => (
-            <div
-              key={w.id}
-              className="sf-card hoverable fade-in"
-              onClick={() => { setActiveWorld(w.id); navigate(`/w/${w.id}`); }}
-              style={{ minHeight: 200, display: 'flex', flexDirection: 'column' }}
-            >
-              <div style={{ height: 110, background: w.coverGradient, display: 'flex', alignItems: 'flex-end', padding: 12, position: 'relative' }}>
-                <div style={{ fontSize: 28, position: 'absolute', top: 10, right: 12 }}>{w.bannerEmoji}</div>
-              </div>
-              <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-                <div className="text-display" style={{ fontSize: 16, letterSpacing: '0.06em' }}>{w.name}</div>
-                {w.tagline && <div className="text-serif" style={{ color: 'var(--ember)', fontStyle: 'italic', fontSize: 13 }}>{w.tagline}</div>}
-                <div className="text-mute" style={{ fontSize: 12.5, lineHeight: 1.5, flex: 1, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' }}>
-                  {w.description || 'A realm waiting to be filled.'}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-                  <div className="text-dim" style={{ fontSize: 11 }}>
-                    Updated {new Date(w.updatedAt).toLocaleDateString()}
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                    <button className="btn btn-ghost btn-icon" title="Export" onClick={() => handleExport(w.id)}>
-                      <Icon name="download" size={13} />
-                    </button>
-                    <button className="btn btn-ghost btn-icon" title="Delete" onClick={() => setConfirmDelete(w.id)}>
-                      <Icon name="trash" size={13} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+          {/* Worlds you own */}
+          <section>
+            {sharedWorlds.length > 0 && (
+              <div className="text-eyebrow" style={{ marginBottom: 10 }}>Owned by you · {ownedWorlds.length}</div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+              {ownedWorlds.map(w => (
+                <WorldCard
+                  key={w.id}
+                  world={w}
+                  role={'owner'}
+                  onOpen={() => { setActiveWorld(w.id); navigate(`/w/${w.id}`); }}
+                  onExport={() => handleExport(w.id)}
+                  onDelete={() => setConfirmDelete(w.id)}
+                />
+              ))}
             </div>
-          ))}
+          </section>
+
+          {/* Worlds shared with you */}
+          {sharedWorlds.length > 0 && (
+            <section>
+              <div className="text-eyebrow" style={{ marginBottom: 10, color: 'var(--ember)' }}>Shared with you · {sharedWorlds.length}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                {sharedWorlds.map(w => (
+                  <WorldCard
+                    key={w.id}
+                    world={w}
+                    role={myMemberRoles[w.id] ?? 'viewer'}
+                    onOpen={() => { setActiveWorld(w.id); navigate(`/w/${w.id}`); }}
+                    onExport={() => handleExport(w.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
 
@@ -167,6 +184,79 @@ export default function WorldPicker() {
           onCancel={() => setConfirmDelete(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** A single world card. Owned cards get export + delete; shared cards get export only. */
+function WorldCard({
+  world,
+  role,
+  onOpen,
+  onExport,
+  onDelete,
+}: {
+  world: { id: string; name: string; tagline: string; description: string; coverGradient: string; bannerEmoji: string; updatedAt: number };
+  role: 'owner' | 'editor' | 'viewer';
+  onOpen: () => void;
+  onExport: () => void;
+  onDelete?: () => void;
+}) {
+  const badgeText =
+    role === 'owner' ? null :
+    role === 'editor' ? 'Shared · Editor' :
+    'Shared · Viewer';
+  const badgeColor =
+    role === 'editor' ? 'rgba(67,199,199,0.85)' :
+    'rgba(184,138,59,0.85)';
+
+  return (
+    <div
+      className="sf-card hoverable fade-in"
+      onClick={onOpen}
+      style={{ minHeight: 200, display: 'flex', flexDirection: 'column', position: 'relative' }}
+    >
+      <div style={{ height: 110, background: world.coverGradient, display: 'flex', alignItems: 'flex-end', padding: 12, position: 'relative' }}>
+        <div style={{ fontSize: 28, position: 'absolute', top: 10, right: 12 }}>{world.bannerEmoji}</div>
+        {badgeText && (
+          <div
+            style={{
+              position: 'absolute', top: 10, left: 12,
+              padding: '2px 8px', borderRadius: 99,
+              background: 'rgba(0,0,0,0.45)',
+              border: '1px solid ' + badgeColor,
+              color: '#fff',
+              fontFamily: 'Cinzel, serif',
+              fontSize: 9.5, letterSpacing: '0.22em', textTransform: 'uppercase',
+              backdropFilter: 'blur(6px)',
+            }}
+          >
+            {badgeText}
+          </div>
+        )}
+      </div>
+      <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+        <div className="text-display" style={{ fontSize: 16, letterSpacing: '0.06em' }}>{world.name}</div>
+        {world.tagline && <div className="text-serif" style={{ color: 'var(--ember)', fontStyle: 'italic', fontSize: 13 }}>{world.tagline}</div>}
+        <div className="text-mute" style={{ fontSize: 12.5, lineHeight: 1.5, flex: 1, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' }}>
+          {world.description || 'A realm waiting to be filled.'}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+          <div className="text-dim" style={{ fontSize: 11 }}>
+            Updated {new Date(world.updatedAt).toLocaleDateString()}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+            <button className="btn btn-ghost btn-icon" title="Export" onClick={onExport}>
+              <Icon name="download" size={13} />
+            </button>
+            {onDelete && (
+              <button className="btn btn-ghost btn-icon" title="Delete" onClick={onDelete}>
+                <Icon name="trash" size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import * as cloud from '../lib/cloudSync';
+import { supabase } from '../lib/supabase';
 import type { World, WorldTheme } from '../types';
 
 const GRADIENTS = [
@@ -43,11 +44,31 @@ export const useWorlds = create<WorldsStore>((set, get) => ({
   loaded: false,
   hydrate: async () => {
     const worlds = await db.worlds.orderBy('updatedAt').reverse().toArray();
+    // Backfill ownerUserId on pre-sharing local rows. Anything in local IndexedDB
+    // before sharing existed was created by the current user, so it's safe to
+    // attribute to them.
+    try {
+      const { data } = await supabase.auth.getUser();
+      const myId = data.user?.id;
+      if (myId) {
+        const needsBackfill = worlds.filter(w => !w.ownerUserId);
+        if (needsBackfill.length) {
+          for (const w of needsBackfill) w.ownerUserId = myId;
+          await db.worlds.bulkPut(needsBackfill);
+        }
+      }
+    } catch {
+      // signed-out user; leave as-is, they'll be marked when they sign in
+    }
     set({ worlds, loaded: true });
   },
   create: async (name) => {
     const idx = get().worlds.length;
     const w = makeWorld(name.trim() || 'Untitled Realm', idx);
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (data.user?.id) w.ownerUserId = data.user.id;
+    } catch {}
     await db.worlds.put(w);
     set({ worlds: [w, ...get().worlds] });
     cloud.upsertWorld(w);

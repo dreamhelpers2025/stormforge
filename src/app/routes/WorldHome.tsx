@@ -11,6 +11,9 @@ import { nanoid } from 'nanoid';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
 import ImportArticles from '../components/ImportArticles';
+import MembersPanel from '../components/MembersPanel';
+import { useMembers } from '../stores/useMembers';
+import { useAuth } from '../stores/useAuth';
 import type { WorldGoal } from '../types';
 
 export default function WorldHome() {
@@ -23,6 +26,12 @@ export default function WorldHome() {
   const push = useToast(s => s.push);
 
   const world = worlds.find(w => w.id === worldId);
+  const currentUserId = useAuth(s => s.user?.id ?? null);
+  const roleFor = useMembers(s => s.roleFor);
+  const role = world ? roleFor(world.id, world.ownerUserId ?? '', currentUserId) : null;
+  const isOwner = role === 'owner';
+  const canEdit = role === 'owner' || role === 'editor';
+
   const [editingMeta, setEditingMeta] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [meta, setMeta] = useState({ name: '', tagline: '', description: '', bannerEmoji: '', coverGradient: '' });
@@ -93,30 +102,62 @@ export default function WorldHome() {
       {/* Cover banner */}
       <div className="world-cover" style={{ background: world.coverGradient, marginBottom: 24 }}>
         <div style={{ position: 'absolute', top: 14, right: 18, fontSize: 36 }}>{world.bannerEmoji}</div>
+        {role && role !== 'owner' && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 14,
+              left: 18,
+              padding: '3px 10px',
+              background: role === 'editor' ? 'rgba(67,199,199,0.25)' : 'rgba(184,138,59,0.28)',
+              border: '1px solid ' + (role === 'editor' ? 'rgba(67,199,199,0.7)' : 'rgba(184,138,59,0.7)'),
+              borderRadius: 99,
+              color: '#fff',
+              fontFamily: 'Cinzel, serif',
+              fontSize: 10,
+              letterSpacing: '0.25em',
+              textTransform: 'uppercase',
+              backdropFilter: 'blur(6px)',
+            }}
+          >
+            Shared · {role === 'editor' ? 'Editor' : 'Viewer'}
+          </div>
+        )}
         <div className="world-cover-body">
           <div className="text-eyebrow" style={{ color: '#ffffffb0' }}>Realm of</div>
           <h1 className="text-display" style={{ fontSize: 38, color: '#fff', margin: '4px 0 6px', letterSpacing: '0.05em' }}>{world.name}</h1>
           {world.tagline && <div className="text-serif" style={{ fontStyle: 'italic', fontSize: 17, color: '#ffffffd0' }}>{world.tagline}</div>}
         </div>
         <div style={{ position: 'absolute', bottom: 14, right: 18, display: 'flex', gap: 6 }}>
-          <button
-            className="btn btn-ghost btn-icon"
-            style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
-            onClick={() => setImportOpen(true)}
-            title="Import articles from a JSON file"
-          >
-            <Icon name="upload" size={14} />
-          </button>
-          <button
-            className="btn btn-ghost btn-icon"
-            style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
-            onClick={() => setEditingMeta(true)}
-            title="Edit world"
-          >
-            <Icon name="edit" size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className="btn btn-ghost btn-icon"
+              style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
+              onClick={() => setImportOpen(true)}
+              title="Import articles from a JSON file"
+            >
+              <Icon name="upload" size={14} />
+            </button>
+          )}
+          {isOwner && (
+            <button
+              className="btn btn-ghost btn-icon"
+              style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
+              onClick={() => setEditingMeta(true)}
+              title="Edit world"
+            >
+              <Icon name="edit" size={14} />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Members panel — owners only */}
+      {isOwner && (
+        <div style={{ marginBottom: 22 }}>
+          <MembersPanel worldId={worldId} worldName={world.name} isOwner={isOwner} />
+        </div>
+      )}
 
       {/* Description */}
       <div className="sf-card" style={{ padding: 22, marginBottom: 22 }}>

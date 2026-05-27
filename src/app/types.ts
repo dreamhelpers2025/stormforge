@@ -37,6 +37,9 @@ export type WorldTheme =
 
 export interface World {
   id: string;
+  /** Supabase auth.users.id of the owner. Optional only for pre-sharing local rows
+   *  that haven't been backfilled yet. */
+  ownerUserId?: string;
   name: string;
   tagline: string;
   description: string;        // plain text or markdown
@@ -165,4 +168,20 @@ export interface AppSettings {
   activeWorldId: string | null;
   hasSeenTutorial: boolean;
   recentArticleIds: string[];
+}
+
+/** Sharing / collaboration */
+export type WorldRole = 'owner' | 'editor' | 'viewer';
+
+export interface WorldMember {
+  id: string;
+  worldId: string;
+  /** Null until the invitee signs in with the matching email. */
+  userId: string | null;
+  email: string;
+  role: 'viewer' | 'editor';
+  invitedBy: string;
+  invitedAt: number;
+  /** Null until accepted. */
+  acceptedAt: number | null;
 }

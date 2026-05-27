@@ -10,6 +10,8 @@ import { useWorlds } from '../stores/useWorlds';
 import { useSettings } from '../stores/useSettings';
 import { useArticles, EMPTY_ARTICLES } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
+import { useAuth } from '../stores/useAuth';
+import { useMembers } from '../stores/useMembers';
 import type { Article } from '../types';
 
 export default function Sidebar() {
@@ -23,6 +25,13 @@ export default function Sidebar() {
   const loadArticles = useArticles(s => s.loadWorld);
   const createFolder = useArticles(s => s.createFolder);
   const push = useToast(s => s.push);
+
+  // Role gating for non-owners
+  const currentUserId = useAuth(s => s.user?.id ?? null);
+  const myMemberRoles = useMembers(s => s.myMemberRoles);
+  const currentWorld = worlds.find(w => w.id === worldId);
+  const isOwner = !!currentWorld && (!currentWorld.ownerUserId || currentWorld.ownerUserId === currentUserId);
+  const canEdit = isOwner || (worldId ? myMemberRoles[worldId] === 'editor' : false);
 
   const [newArticleOpen, setNewArticleOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -100,24 +109,26 @@ export default function Sidebar() {
 
       {worldId ? (
         <>
-          {/* New article + new folder */}
-          <div style={{ padding: '0 14px 10px', display: 'flex', gap: 6 }}>
-            <button
-              className="btn btn-primary"
-              onClick={() => setNewArticleOpen(true)}
-              style={{ flex: 1, fontSize: 12 }}
-              title="Create a new article from a template or scratch"
-            >
-              <Icon name="plus" size={13} /> New Article
-            </button>
-            <button
-              className="btn btn-ghost btn-icon"
-              onClick={() => { setCreatingFolder(true); setFolderName(''); }}
-              title="Create a folder"
-            >
-              📁
-            </button>
-          </div>
+          {/* New article + new folder — editors only */}
+          {canEdit && (
+            <div style={{ padding: '0 14px 10px', display: 'flex', gap: 6 }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setNewArticleOpen(true)}
+                style={{ flex: 1, fontSize: 12 }}
+                title="Create a new article from a template or scratch"
+              >
+                <Icon name="plus" size={13} /> New Article
+              </button>
+              <button
+                className="btn btn-ghost btn-icon"
+                onClick={() => { setCreatingFolder(true); setFolderName(''); }}
+                title="Create a folder"
+              >
+                📁
+              </button>
+            </div>
+          )}
 
           <div className="sidebar-section">
             <NavLink to={`/w/${worldId}`} end className={({ isActive }) => 'sidebar-link' + (isActive ? ' active' : '')}>

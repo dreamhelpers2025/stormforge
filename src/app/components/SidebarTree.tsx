@@ -3,6 +3,9 @@ import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { buildTree, computeOrder, isAncestor, type TreeNode } from '../lib/tree';
 import { useArticles } from '../stores/useArticles';
 import { useToast } from '../stores/useToast';
+import { useWorlds } from '../stores/useWorlds';
+import { useAuth } from '../stores/useAuth';
+import { useMembers } from '../stores/useMembers';
 import { CATEGORY_MAP } from '../lib/categories';
 import Icon from './Icon';
 import ConfirmDialog from './ConfirmDialog';
@@ -22,6 +25,14 @@ export default function SidebarTree({ articles }: Props) {
   const removeArticle = useArticles(s => s.remove);
   const removeRecursive = useArticles(s => s.removeRecursive);
   const push = useToast(s => s.push);
+
+  // Determine whether the current user can edit this world.
+  const currentUserId = useAuth(s => s.user?.id ?? null);
+  const myMemberRoles = useMembers(s => s.myMemberRoles);
+  const world = useWorlds(s => s.worlds.find(w => w.id === worldId));
+  const isOwner = !!world && (!world.ownerUserId || world.ownerUserId === currentUserId);
+  const isEditor = !isOwner && myMemberRoles[worldId] === 'editor';
+  const canEdit = isOwner || isEditor;
 
   // Delete confirm state — track the article being deleted
   const [deleteTarget, setDeleteTarget] = useState<Article | null>(null);
@@ -175,6 +186,7 @@ export default function SidebarTree({ articles }: Props) {
           setDropTarget={setDropTarget}
           onDrop={onDrop}
           worldId={worldId}
+          canEdit={canEdit}
           onRename={async (id, title) => { await updateArticle(id, { title }); }}
           onRequestDelete={(a) => setDeleteTarget(a)}
         />
@@ -321,6 +333,7 @@ function TreeRow({
   setDropTarget,
   onDrop,
   worldId,
+  canEdit,
   onRename,
   onRequestDelete,
 }: {
@@ -334,6 +347,7 @@ function TreeRow({
   setDropTarget: (t: { id: string | 'root'; position: 'before' | 'after' | 'inside' } | null) => void;
   onDrop: (targetId: string | 'root', position: 'before' | 'after' | 'inside') => void;
   worldId: string;
+  canEdit: boolean;
   onRename: (id: string, title: string) => Promise<void>;
   onRequestDelete: (a: Article) => void;
 }) {
@@ -433,13 +447,13 @@ function TreeRow({
   const rowContent = (
     <div
       className="tree-row"
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      onDoubleClick={(e) => { e.preventDefault(); setEditing(true); }}
+      draggable={canEdit}
+      onDragStart={canEdit ? handleDragStart : undefined}
+      onDragEnd={canEdit ? handleDragEnd : undefined}
+      onDragOver={canEdit ? handleDragOver : undefined}
+      onDragLeave={canEdit ? handleDragLeave : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
+      onDoubleClick={canEdit ? (e) => { e.preventDefault(); setEditing(true); } : undefined}
       title={isFolder ? a.title : `${a.title} (${cat.label})`}
       style={rowStyle}
     >
@@ -521,8 +535,8 @@ function TreeRow({
         <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{node.children.length}</span>
       )}
 
-      {/* Row actions — visible on hover */}
-      {!editing && (
+      {/* Row actions — visible on hover, only for editors/owners */}
+      {!editing && canEdit && (
         <span className="tree-row-actions" onClick={e => e.stopPropagation()}>
           <button
             title={isFolder ? 'Rename folder' : 'Rename article'}
@@ -565,6 +579,7 @@ function TreeRow({
               setDropTarget={setDropTarget}
               onDrop={onDrop}
               worldId={worldId}
+              canEdit={canEdit}
               onRename={onRename}
               onRequestDelete={onRequestDelete}
             />
