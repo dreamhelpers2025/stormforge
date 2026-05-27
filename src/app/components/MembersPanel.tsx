@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useMembers } from '../stores/useMembers';
+import { useMembers, EMPTY_MEMBERS } from '../stores/useMembers';
 import { useToast } from '../stores/useToast';
 import type { WorldMember } from '../types';
 import Icon from './Icon';
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function MembersPanel({ worldId, worldName, isOwner }: Props) {
-  const members = useMembers(s => s.byWorld[worldId] ?? []);
+  const members = useMembers(s => s.byWorld[worldId] ?? EMPTY_MEMBERS) as unknown as WorldMember[];
   const invite = useMembers(s => s.invite);
   const changeRole = useMembers(s => s.changeRole);
   const removeMember = useMembers(s => s.removeMember);
