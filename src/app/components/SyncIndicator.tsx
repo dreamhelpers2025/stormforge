@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSync } from '../stores/useSync';
 import { useAuth } from '../stores/useAuth';
 import { resync } from '../lib/cloudSync';
@@ -10,6 +10,7 @@ export default function SyncIndicator() {
   const lastSync = useSync(s => s.lastSync);
   const lastError = useSync(s => s.lastError);
   const user = useAuth(s => s.user);
+  const [showDetails, setShowDetails] = useState(false);
 
   if (!user) {
     return (
@@ -32,19 +33,72 @@ export default function SyncIndicator() {
   const clickable = state === 'error' || state === 'offline' || state === 'idle';
 
   return (
-    <button
-      className="btn btn-ghost"
-      style={{ width: '100%', padding: '4px 8px', fontSize: 11, gap: 6, color, justifyContent: 'flex-start' }}
-      title={title}
-      onClick={() => { if (clickable) resync(); }}
-    >
-      <Icon name={icon} size={11} />
-      <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
-      {state === 'idle' && lastSync != null && (
-        <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
-          {new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <button
+        className="btn btn-ghost"
+        style={{ width: '100%', padding: '4px 8px', fontSize: 11, gap: 6, color, justifyContent: 'flex-start' }}
+        title={title}
+        onClick={() => { if (clickable) resync(); }}
+      >
+        <Icon name={icon} size={11} />
+        <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
+        {state === 'idle' && lastSync != null && (
+          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+            {new Date(lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+      </button>
+
+      {state === 'error' && lastError && (
+        <div
+          style={{
+            padding: '6px 8px',
+            background: 'rgba(217,122,122,0.08)',
+            border: '1px solid rgba(217,122,122,0.3)',
+            borderRadius: 6,
+            fontSize: 10.5,
+            lineHeight: 1.4,
+            color: 'var(--danger)',
+            wordBreak: 'break-word',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 4 }}>
+            <strong style={{ fontSize: 9.5, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Error details</strong>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                onClick={() => {
+                  try { navigator.clipboard.writeText(lastError ?? ''); } catch {}
+                }}
+                title="Copy error to clipboard"
+                style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0, fontSize: 10 }}
+              >
+                <Icon name="link" size={10} />
+              </button>
+              <button
+                onClick={() => setShowDetails(s => !s)}
+                title={showDetails ? 'Hide' : 'Show full'}
+                style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0, fontSize: 10 }}
+              >
+                <Icon name={showDetails ? 'eye-off' : 'eye'} size={10} />
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              maxHeight: showDetails ? 320 : 60,
+              overflow: 'auto',
+              fontFamily: showDetails ? 'ui-monospace, Menlo, monospace' : 'inherit',
+              fontSize: showDetails ? 10 : 10.5,
+              whiteSpace: showDetails ? 'pre-wrap' : 'normal',
+            }}
+          >
+            {lastError}
+          </div>
+          <div style={{ fontSize: 9.5, color: 'var(--text-dim)', marginTop: 4, fontStyle: 'italic' }}>
+            Full payload also logged to browser DevTools console.
+          </div>
+        </div>
       )}
-    </button>
+    </div>
   );
 }

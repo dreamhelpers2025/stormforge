@@ -48,13 +48,25 @@ function ensureSignedIn(): string | null {
   return currentUserId;
 }
 
+/** Best-effort error stringification for Supabase errors. */
+function formatError(e: any): string {
+  if (!e) return 'unknown';
+  const parts: string[] = [];
+  if (e.code) parts.push(`[${e.code}]`);
+  if (e.message) parts.push(e.message);
+  else parts.push(String(e));
+  if (e.details && e.details !== e.message) parts.push(`details: ${e.details}`);
+  if (e.hint) parts.push(`hint: ${e.hint}`);
+  return parts.join(' · ');
+}
+
 /** Wrap a fire-and-forget cloud op with pending-counter bookkeeping. */
 function runOp(fn: () => Promise<unknown>): void {
   useSync.getState().inc();
   fn()
     .catch((e: any) => {
-      console.warn('[cloudSync] op failed', e);
-      useSync.getState().set({ state: 'error', lastError: e?.message ?? String(e) });
+      console.error('[cloudSync] op failed:', e);
+      useSync.getState().set({ state: 'error', lastError: formatError(e) });
     })
     .finally(() => useSync.getState().dec());
 }
@@ -67,26 +79,33 @@ export async function reconcileAll(userId: string): Promise<void> {
   currentUserId = userId;
   useSync.getState().set({ state: 'syncing', lastError: null });
 
-  try {
-    await Promise.all([
-      reconcileWorlds(userId),
-      reconcileArticles(userId),
-      reconcileMaps(userId),
-      reconcileNotes(userId),
-      reconcileRevisions(userId),
-    ]);
-    useSync.getState().set({ state: 'idle', lastSync: Date.now(), lastError: null });
+  // Sequential + labeled. If one step fails we want to know which.
+  const steps: Array<[string, () => Promise<void>]> = [
+    ['worlds',    () => reconcileWorlds(userId)],
+    ['articles',  () => reconcileArticles(userId)],
+    ['maps',      () => reconcileMaps(userId)],
+    ['notes',     () => reconcileNotes(userId)],
+    ['revisions', () => reconcileRevisions(userId)],
+  ];
 
-    // Refresh local stores from IndexedDB after reconciliation may have written
-    // new rows directly to Dexie.
-    await Promise.all([
-      useWorlds.getState().hydrate(),
-    ]);
-    // Articles + maps are loaded lazily per-world; nothing to refresh here.
-  } catch (e: any) {
-    console.error('[cloudSync] reconcile failed', e);
-    useSync.getState().set({ state: 'error', lastError: e?.message ?? String(e) });
+  for (const [label, run] of steps) {
+    try {
+      await run();
+    } catch (e: any) {
+      console.error(`[cloudSync] reconcile.${label} failed:`, e);
+      useSync.getState().set({
+        state: 'error',
+        lastError: `reconcile.${label}: ${formatError(e)}`,
+      });
+      return;
+    }
   }
+
+  useSync.getState().set({ state: 'idle', lastSync: Date.now(), lastError: null });
+
+  // Refresh local stores from IndexedDB after reconciliation may have written
+  // new rows directly to Dexie.
+  await useWorlds.getState().hydrate();
 }
 
 // ------- per-table reconcile ---------
@@ -147,12 +166,22 @@ async function reconcileArticles(userId: string) {
 
   if (toPushDown.length) await db.articles.bulkPut(toPushDown);
   if (toPushUp.length) {
-    const payload = toPushUp.map(a => articleToCloud(a, userId));
-    // chunk to avoid hitting payload size limits with huge image base64 articles
-    for (let i = 0; i < payload.length; i += 25) {
-      const slice = payload.slice(i, i + 25);
-      const { error: upErr } = await supabase.from('articles').upsert(slice);
-      if (upErr) throw upErr;
+    // Chunked, with per-row fallback so a single failing article is named in the error.
+    const CHUNK = 10;
+    for (let i = 0; i < toPushUp.length; i += CHUNK) {
+      const slice = toPushUp.slice(i, i + CHUNK);
+      const payload = slice.map(a => articleToCloud(a, userId));
+      const { error: upErr } = await supabase.from('articles').upsert(payload);
+      if (upErr) {
+        for (const a of slice) {
+          const { error: rowErr } = await supabase.from('articles').upsert(articleToCloud(a, userId));
+          if (rowErr) {
+            console.error('[cloudSync] failing article in reconcile:', { id: a.id, title: a.title, category: a.category }, rowErr);
+            throw new Error(`article "${a.title}" (${a.category}): ${rowErr.message ?? String(rowErr)}`);
+          }
+        }
+        throw upErr;
+      }
     }
   }
 }
@@ -256,11 +285,22 @@ export function bulkUpsertArticles(articles: Article[]) {
   const uid = ensureSignedIn(); if (!uid) return;
   if (articles.length === 0) return;
   runOp(async () => {
-    const CHUNK = 20;
+    const CHUNK = 10;
     for (let i = 0; i < articles.length; i += CHUNK) {
-      const slice = articles.slice(i, i + CHUNK).map(a => articleToCloud(a, uid));
-      const { error } = await supabase.from('articles').upsert(slice);
-      if (error) throw error;
+      const slice = articles.slice(i, i + CHUNK);
+      const payload = slice.map(a => articleToCloud(a, uid));
+      const { error } = await supabase.from('articles').upsert(payload);
+      if (error) {
+        // Fall back to per-row to identify which article specifically failed
+        for (const a of slice) {
+          const { error: rowErr } = await supabase.from('articles').upsert(articleToCloud(a, uid));
+          if (rowErr) {
+            console.error('[cloudSync] failing article:', { id: a.id, title: a.title, category: a.category }, rowErr);
+            throw new Error(`article "${a.title}" (${a.category}): ${rowErr.message ?? String(rowErr)}`);
+          }
+        }
+        throw error;
+      }
     }
   });
 }
