@@ -103,17 +103,9 @@ export default function SidebarTree({ articles }: Props) {
     }
   }
 
-  if (tree.length === 0) {
-    return (
-      <div style={{ padding: '8px 18px' }}>
-        <div className="text-mute" style={{ fontSize: 12, lineHeight: 1.5, fontStyle: 'italic' }}>
-          No articles yet. Click <strong style={{ color: 'var(--accent)' }}>+ New Article</strong> above to begin.
-        </div>
-      </div>
-    );
-  }
-
-  // Counts for the delete confirm dialog
+  // Counts for the delete confirm dialog.
+  // IMPORTANT: This useMemo must be called unconditionally on every render
+  // (no early return above it). The hook count is what triggers React error #310.
   const deleteTargetChildren = useMemo(() => {
     if (!deleteTarget) return 0;
     // BFS for descendants
@@ -136,6 +128,16 @@ export default function SidebarTree({ articles }: Props) {
     }
     return count;
   }, [deleteTarget, articles]);
+
+  if (tree.length === 0) {
+    return (
+      <div style={{ padding: '8px 18px' }}>
+        <div className="text-mute" style={{ fontSize: 12, lineHeight: 1.5, fontStyle: 'italic' }}>
+          No articles yet. Click <strong style={{ color: 'var(--accent)' }}>+ New Article</strong> above to begin.
+        </div>
+      </div>
+    );
+  }
 
   async function handleOrphanAndDelete() {
     if (!deleteTarget) return;
