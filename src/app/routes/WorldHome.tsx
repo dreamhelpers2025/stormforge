@@ -10,6 +10,7 @@ import { compressFile } from '../lib/imageCompress';
 import { nanoid } from 'nanoid';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
+import ImportArticles from '../components/ImportArticles';
 import type { WorldGoal } from '../types';
 
 export default function WorldHome() {
@@ -23,6 +24,7 @@ export default function WorldHome() {
 
   const world = worlds.find(w => w.id === worldId);
   const [editingMeta, setEditingMeta] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [meta, setMeta] = useState({ name: '', tagline: '', description: '', bannerEmoji: '', coverGradient: '' });
   const [prompt, setPrompt] = useState(() => randomPrompt());
 
@@ -96,9 +98,24 @@ export default function WorldHome() {
           <h1 className="text-display" style={{ fontSize: 38, color: '#fff', margin: '4px 0 6px', letterSpacing: '0.05em' }}>{world.name}</h1>
           {world.tagline && <div className="text-serif" style={{ fontStyle: 'italic', fontSize: 17, color: '#ffffffd0' }}>{world.tagline}</div>}
         </div>
-        <button className="btn btn-ghost btn-icon" style={{ position: 'absolute', bottom: 14, right: 18, background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }} onClick={() => setEditingMeta(true)} title="Edit world">
-          <Icon name="edit" size={14} />
-        </button>
+        <div style={{ position: 'absolute', bottom: 14, right: 18, display: 'flex', gap: 6 }}>
+          <button
+            className="btn btn-ghost btn-icon"
+            style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
+            onClick={() => setImportOpen(true)}
+            title="Import articles from a JSON file"
+          >
+            <Icon name="upload" size={14} />
+          </button>
+          <button
+            className="btn btn-ghost btn-icon"
+            style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
+            onClick={() => setEditingMeta(true)}
+            title="Edit world"
+          >
+            <Icon name="edit" size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Description */}
@@ -218,6 +235,8 @@ export default function WorldHome() {
       </div>
 
       {/* Edit modal */}
+      <ImportArticles worldId={worldId} open={importOpen} onClose={() => setImportOpen(false)} />
+
       {/* Total word count strip */}
       {totalWords > 0 && (
         <div className="sf-card" style={{ padding: 12, marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>

@@ -27,6 +27,8 @@ interface ArticlesStore {
   reparent: (id: string, newParentId: string | undefined, order: number) => Promise<void>;
   remove: (id: string) => Promise<void>;
   search: (worldId: string, q: string) => Article[];
+  /** Bulk insert pre-constructed articles. Used by the import flow. */
+  bulkImport: (worldId: string, articles: Article[]) => Promise<void>;
 }
 
 export const useArticles = create<ArticlesStore>((set, get) => ({
@@ -148,6 +150,15 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
       a.contentText.toLowerCase().includes(query) ||
       a.tags.some(t => t.toLowerCase().includes(query))
     ).slice(0, 50);
+  },
+  bulkImport: async (worldId, articles) => {
+    if (!articles.length) return;
+    await db.articles.bulkPut(articles);
+    const existing = get().byWorld[worldId] ?? [];
+    const next = [...articles, ...existing];
+    set({ byWorld: { ...get().byWorld, [worldId]: next } });
+    // Fire cloud upserts (best-effort, fire-and-forget; reconcile catches stragglers)
+    for (const a of articles) cloud.upsertArticle(a);
   },
 }));
 
