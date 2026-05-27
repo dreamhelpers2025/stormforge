@@ -91,6 +91,9 @@ export function mapFromCloud(row: any): MapData {
     showGrid: row.show_grid ?? true,
     pins: row.pins ?? [],
     regions: row.regions ?? [],
+    stamps: row.stamps ?? [],
+    style: row.style ?? undefined,
+    showCompass: row.show_compass ?? false,
     createdAt: Number(row.created_at) || 0,
     updatedAt: Number(row.updated_at) || 0,
   };
@@ -107,6 +110,9 @@ export function mapToCloud(m: MapData, userId: string) {
     show_grid: m.showGrid,
     pins: m.pins,
     regions: m.regions,
+    stamps: m.stamps ?? [],
+    style: m.style ?? null,
+    show_compass: m.showCompass ?? false,
     created_at: m.createdAt,
     updated_at: m.updatedAt,
   };

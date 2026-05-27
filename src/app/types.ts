@@ -100,6 +100,26 @@ export interface SpeciesMeta {
 
 export type PinKind = 'capital' | 'city' | 'town' | 'ruin' | 'landmark' | 'dungeon' | 'battle' | 'lore' | 'roost' | 'shrine' | 'rift' | 'custom';
 
+/** Built-in map style presets (procedural — no bundled imagery). */
+export type MapStyle =
+  | 'parchment'
+  | 'vellum'
+  | 'midnight'
+  | 'sketch'
+  | 'image'    // user uploaded a map image — use `background` data URL
+  | 'custom';  // legacy: raw CSS background string in `background`
+
+/** A purely decorative stamp scattered on the map (mountain, tree, tower, etc). */
+export interface MapStamp {
+  id: string;
+  x: number;            // 0-100 percent
+  y: number;            // 0-100 percent
+  kind: string;         // key into the stamp registry
+  scale: number;        // 1 = ~4% of map width; range 0.4 – 4
+  rotation: number;     // degrees, -180 to 180
+  color?: string;       // optional tint override
+}
+
 export interface MapPin {
   id: string;
   x: number;            // 0-100 percent
@@ -133,6 +153,12 @@ export interface MapData {
   showGrid: boolean;
   pins: MapPin[];
   regions: MapRegion[];
+  /** Decorative stamps. Optional for backward compat with pre-v2 maps. */
+  stamps?: MapStamp[];
+  /** Background style preset. If undefined, treat as 'custom' and use `background` as-is. */
+  style?: MapStyle;
+  /** Show a decorative compass rose in the top-right corner. */
+  showCompass?: boolean;
   createdAt: number;
   updatedAt: number;
 }

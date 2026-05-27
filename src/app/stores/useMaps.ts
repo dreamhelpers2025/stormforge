@@ -19,6 +19,9 @@ function makeMap(worldId: string, name: string): MapData {
     showGrid: true,
     pins: [],
     regions: [],
+    stamps: [],
+    style: 'midnight',
+    showCompass: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

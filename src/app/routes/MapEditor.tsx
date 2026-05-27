@@ -9,7 +9,9 @@ import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { compressImageDataUrl, fileToDataUrl } from '../lib/imageCompress';
-import type { MapData, MapPin, MapRegion, PinKind, Article } from '../types';
+import { MAP_STYLE_PRESETS, getEffectiveBackground, getInkColor, isLightStyle } from '../lib/mapStyles';
+import { STAMPS, STAMPS_BY_CATEGORY, CATEGORY_LABELS, getStamp, type StampCategory } from '../lib/mapStamps';
+import type { MapData, MapPin, MapRegion, MapStamp, MapStyle, PinKind, Article } from '../types';
 
 const PIN_KINDS: { key: PinKind; label: string; emoji: string; color: string }[] = [
   { key: 'capital',  label: 'Capital',   emoji: '👑', color: '#B88A3B' },
@@ -28,7 +30,7 @@ const PIN_KINDS: { key: PinKind; label: string; emoji: string; color: string }[]
 
 const REGION_COLORS = ['#43C7C7', '#B88A3B', '#B0413E', '#6ed099', '#c084fc', '#93c5fd', '#D8E0E5', '#7d8a96'];
 
-type Tool = 'pan' | 'pin' | 'region' | 'edit';
+type Tool = 'pan' | 'pin' | 'region' | 'stamp' | 'edit';
 
 export default function MapEditor() {
   const { worldId = '', mapId = '' } = useParams();
@@ -44,9 +46,11 @@ export default function MapEditor() {
   // Local interaction state
   const [tool, setTool] = useState<Tool>('pan');
   const [pendingKind, setPendingKind] = useState<PinKind>('city');
+  const [pendingStampKey, setPendingStampKey] = useState<string>('mountain');
   const [pendingRegionPoints, setPendingRegionPoints] = useState<[number, number][]>([]);
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
+  const [selectedStamp, setSelectedStamp] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [confirmDeleteMap, setConfirmDeleteMap] = useState(false);
@@ -54,6 +58,10 @@ export default function MapEditor() {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const isPanning = useRef<{ x: number; y: number } | null>(null);
   const draggingPin = useRef<string | null>(null);
+  const draggingStamp = useRef<string | null>(null);
+
+  // Normalize stamps array so existing maps without it don't crash.
+  const stamps: MapStamp[] = (map as any)?.stamps ?? [];
 
   if (!map) return <EmptyState title="Map not found" />;
 
@@ -85,10 +93,24 @@ export default function MapEditor() {
     } else if (tool === 'region') {
       const { x, y } = svgCoords(e.clientX, e.clientY);
       setPendingRegionPoints(p => [...p, [x, y]]);
+    } else if (tool === 'stamp') {
+      const { x, y } = svgCoords(e.clientX, e.clientY);
+      const def = getStamp(pendingStampKey) ?? STAMPS[0];
+      const newStamp: MapStamp = {
+        id: nanoid(8), x, y,
+        kind: def.key,
+        scale: 1,
+        rotation: 0,
+        color: def.defaultColor,
+      };
+      patchMap({ stamps: [...stamps, newStamp] });
+      // Stay in stamp mode so user can rapid-fire place a mountain range.
+      // Don't auto-select — that would make the next click move it.
     } else if (tool === 'edit') {
       // click on empty canvas deselects
       setSelectedPin(null);
       setSelectedRegion(null);
+      setSelectedStamp(null);
     }
   }
 
@@ -121,6 +143,16 @@ export default function MapEditor() {
     draggingPin.current = pinId;
     setSelectedPin(pinId);
     setSelectedRegion(null);
+    setSelectedStamp(null);
+  }
+
+  function startDragStamp(stampId: string, e: React.MouseEvent) {
+    if (tool !== 'edit') return;
+    e.stopPropagation();
+    draggingStamp.current = stampId;
+    setSelectedStamp(stampId);
+    setSelectedPin(null);
+    setSelectedRegion(null);
   }
 
   function handleMouseMove(e: React.MouseEvent) {
@@ -128,6 +160,10 @@ export default function MapEditor() {
       const { x, y } = svgCoords(e.clientX, e.clientY);
       const updated = map.pins.map(p => p.id === draggingPin.current ? { ...p, x, y } : p);
       patchMap({ pins: updated });
+    } else if (draggingStamp.current) {
+      const { x, y } = svgCoords(e.clientX, e.clientY);
+      const updated = stamps.map(s => s.id === draggingStamp.current ? { ...s, x, y } : s);
+      patchMap({ stamps: updated });
     } else if (isPanning.current) {
       const dx = e.clientX - isPanning.current.x;
       const dy = e.clientY - isPanning.current.y;
@@ -138,6 +174,7 @@ export default function MapEditor() {
 
   function handleMouseUp() {
     draggingPin.current = null;
+    draggingStamp.current = null;
     isPanning.current = null;
   }
 
@@ -167,6 +204,13 @@ export default function MapEditor() {
     patchMap({ regions: map.regions.filter(r => r.id !== id) });
     setSelectedRegion(null);
   }
+  function updateStamp(id: string, patch: Partial<MapStamp>) {
+    patchMap({ stamps: stamps.map(s => s.id === id ? { ...s, ...patch } : s) });
+  }
+  function deleteStamp(id: string) {
+    patchMap({ stamps: stamps.filter(s => s.id !== id) });
+    setSelectedStamp(null);
+  }
 
   async function onUploadBg(file: File) {
     // Get aspect ratio from the raw image, then store a compressed JPEG.
@@ -177,11 +221,17 @@ export default function MapEditor() {
     const aspect = img.width / img.height;
     // Maps are bigger — allow 2400px on longest edge
     const compressed = await compressImageDataUrl(raw, 2400, 0.85);
-    patchMap({ background: compressed, aspectRatio: aspect });
+    patchMap({ background: compressed, aspectRatio: aspect, style: 'image' });
   }
 
   const selPin = map.pins.find(p => p.id === selectedPin);
   const selRegion = map.regions.find(r => r.id === selectedRegion);
+  const selStamp = stamps.find(s => s.id === selectedStamp);
+
+  // Effective background CSS string (handles style presets + legacy maps).
+  const effectiveBg = getEffectiveBackground(map);
+  const ink = getInkColor(map);
+  const lightStyle = isLightStyle(map);
 
   return (
     <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', height: '100%', minHeight: 0 }}>
@@ -199,12 +249,25 @@ export default function MapEditor() {
 
           <ToolBtn active={tool === 'pan'} onClick={() => setTool('pan')} icon="globe" label="Pan" />
           <ToolBtn active={tool === 'pin'} onClick={() => setTool('pin')} icon="plus" label="Place pin" />
+          <ToolBtn active={tool === 'stamp'} onClick={() => setTool('stamp')} icon="image" label="Stamp" />
           <ToolBtn active={tool === 'region'} onClick={() => setTool('region')} icon="shield" label="Draw region" />
           <ToolBtn active={tool === 'edit'} onClick={() => setTool('edit')} icon="edit" label="Select & move" />
 
           {tool === 'pin' && (
             <select className="select" style={{ width: 'auto' }} value={pendingKind} onChange={e => setPendingKind(e.target.value as PinKind)}>
               {PIN_KINDS.map(k => <option key={k.key} value={k.key}>{k.emoji} {k.label}</option>)}
+            </select>
+          )}
+
+          {tool === 'stamp' && (
+            <select className="select" style={{ width: 'auto' }} value={pendingStampKey} onChange={e => setPendingStampKey(e.target.value)}>
+              {(Object.keys(STAMPS_BY_CATEGORY) as StampCategory[]).map(cat => (
+                <optgroup key={cat} label={CATEGORY_LABELS[cat]}>
+                  {STAMPS_BY_CATEGORY[cat].map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           )}
 
@@ -231,7 +294,7 @@ export default function MapEditor() {
         <div
           style={{
             flex: 1, overflow: 'hidden', position: 'relative',
-            cursor: tool === 'pan' ? 'grab' : tool === 'pin' ? 'crosshair' : tool === 'region' ? 'crosshair' : 'default',
+            cursor: tool === 'pan' ? 'grab' : (tool === 'pin' || tool === 'region' || tool === 'stamp') ? 'crosshair' : 'default',
             background: 'var(--bg)',
           }}
           onWheel={handleWheel}
@@ -250,7 +313,7 @@ export default function MapEditor() {
               transformOrigin: 'center center',
               width: 'min(92%, 1400px)',
               aspectRatio: map.aspectRatio || (16 / 9),
-              background: map.background?.startsWith('data:') ? `url(${map.background}) center/cover` : map.background,
+              background: effectiveBg,
               borderRadius: 12,
               border: '1px solid var(--border)',
               boxShadow: '0 30px 60px -20px rgba(0,0,0,0.6)',
@@ -309,6 +372,56 @@ export default function MapEditor() {
               )}
             </svg>
 
+            {/* Stamps (decorative scenery) — between regions and pins */}
+            {stamps.map(s => {
+              const def = getStamp(s.kind);
+              if (!def) return null;
+              const isSel = s.id === selectedStamp;
+              // Base size: ~4% of map's smaller dimension, then scaled.
+              const sizePct = 4 * s.scale;
+              const interactive = tool === 'edit';
+              return (
+                <div
+                  key={s.id}
+                  onMouseDown={e => startDragStamp(s.id, e)}
+                  onClick={e => {
+                    if (tool === 'edit') {
+                      e.stopPropagation();
+                      setSelectedStamp(s.id);
+                      setSelectedPin(null);
+                      setSelectedRegion(null);
+                    }
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: `${s.x}%`, top: `${s.y}%`,
+                    width: `${sizePct}%`,
+                    transform: `translate(-50%, -50%) rotate(${s.rotation}deg)`,
+                    cursor: interactive ? 'grab' : 'default',
+                    pointerEvents: interactive ? 'auto' : 'none',
+                    filter: isSel ? `drop-shadow(0 0 6px ${s.color ?? def.defaultColor})` : 'drop-shadow(0 1px 1px rgba(0,0,0,0.35))',
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="xMidYMid meet"
+                    style={{ width: '100%', height: '100%', display: 'block', color: s.color ?? def.defaultColor, overflow: 'visible' }}
+                    dangerouslySetInnerHTML={{ __html: def.svg }}
+                  />
+                  {isSel && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: '50%', transform: 'translate(-50%, 4px)',
+                      padding: '1px 6px', borderRadius: 4,
+                      background: 'rgba(11,30,45,0.85)', border: '1px solid var(--border)',
+                      fontSize: 10, whiteSpace: 'nowrap', color: 'var(--text)', pointerEvents: 'none',
+                    }}>
+                      {def.label}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
             {/* Pins */}
             {map.pins.map(p => {
               const isSel = p.id === selectedPin;
@@ -363,6 +476,23 @@ export default function MapEditor() {
                 Click anywhere to place a {PIN_KINDS.find(k => k.key === pendingKind)?.label.toLowerCase()}.
               </div>
             )}
+            {tool === 'stamp' && (
+              <div style={{ position: 'absolute', top: 12, left: 12, padding: '6px 10px', background: 'rgba(11,30,45,0.85)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--text)', pointerEvents: 'none' }}>
+                Click to scatter {getStamp(pendingStampKey)?.label.toLowerCase() ?? 'stamp'}s. Switch to <strong>Select</strong> to move, scale, or recolor.
+              </div>
+            )}
+
+            {/* Compass rose */}
+            {map.showCompass && (
+              <div style={{
+                position: 'absolute', top: '3%', right: '3%',
+                width: '10%', maxWidth: 80, minWidth: 36, aspectRatio: '1 / 1',
+                pointerEvents: 'none',
+                opacity: 0.85,
+              }}>
+                <CompassRose color={ink} />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -389,6 +519,13 @@ export default function MapEditor() {
             onOpenArticle={(id) => navigate(`/w/${worldId}/articles/${id}`)}
             onClose={() => setSelectedRegion(null)}
           />
+        ) : selStamp ? (
+          <StampDetail
+            stamp={selStamp}
+            onUpdate={(patch) => updateStamp(selStamp.id, patch)}
+            onDelete={() => deleteStamp(selStamp.id)}
+            onClose={() => setSelectedStamp(null)}
+          />
         ) : (
           <MapSettingsPanel
             map={map}
@@ -397,6 +534,7 @@ export default function MapEditor() {
             onDelete={() => setConfirmDeleteMap(true)}
             pinCount={map.pins.length}
             regionCount={map.regions.length}
+            stampCount={stamps.length}
           />
         )}
       </aside>
@@ -533,49 +671,62 @@ function RegionDetail({ region, articles, worldId, onUpdate, onDelete, onOpenArt
   );
 }
 
-function MapSettingsPanel({ map, onPatch, onUploadBg, onDelete, pinCount, regionCount }: {
+function MapSettingsPanel({ map, onPatch, onUploadBg, onDelete, pinCount, regionCount, stampCount }: {
   map: MapData; onPatch: (p: Partial<MapData>) => void; onUploadBg: (f: File) => void; onDelete: () => void;
-  pinCount: number; regionCount: number;
+  pinCount: number; regionCount: number; stampCount: number;
 }) {
   const bgInput = useRef<HTMLInputElement>(null);
-  const presets = [
-    { label: 'Tempest', value: 'linear-gradient(135deg, #0c2030 0%, #0a1a26 100%)' },
-    { label: 'Parchment', value: 'linear-gradient(135deg, #f5ecd9 0%, #e7d8b2 100%)' },
-    { label: 'Ember',  value: 'linear-gradient(135deg, #2a0f0a 0%, #6e2b1d 100%)' },
-    { label: 'Verdant',value: 'linear-gradient(135deg, #0a1f15 0%, #1d6e3a 100%)' },
-    { label: 'Frost',  value: 'linear-gradient(135deg, #0a1a2e 0%, #1e4b86 100%)' },
-    { label: 'Umbra',  value: 'linear-gradient(135deg, #050505 0%, #2a2a2a 100%)' },
-  ];
   return (
     <div style={{ padding: 16 }}>
       <div className="text-eyebrow">Map</div>
       <h3 className="text-display" style={{ fontSize: 18, margin: '4px 0 14px' }}>{map.name}</h3>
 
       <div className="text-mute" style={{ fontSize: 12.5, marginBottom: 12 }}>
-        {pinCount} pin{pinCount === 1 ? '' : 's'} · {regionCount} region{regionCount === 1 ? '' : 's'}
+        {pinCount} pin{pinCount === 1 ? '' : 's'} · {regionCount} region{regionCount === 1 ? '' : 's'} · {stampCount} stamp{stampCount === 1 ? '' : 's'}
       </div>
 
       <label className="label">Description</label>
       <textarea className="textarea" rows={3} value={map.description} onChange={e => onPatch({ description: e.target.value })} style={{ marginBottom: 12 }} />
 
-      <label className="label">Background</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-        {presets.map(p => (
-          <button
-            key={p.label}
-            onClick={() => onPatch({ background: p.value, aspectRatio: 16 / 9 })}
-            title={p.label}
-            style={{ width: 40, height: 28, borderRadius: 6, background: p.value, border: map.background === p.value ? '2px solid var(--accent)' : '1px solid var(--border)', cursor: 'pointer' }}
-          />
-        ))}
+      <label className="label">Map style</label>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+        {MAP_STYLE_PRESETS.map(p => {
+          const isActive = (map.style ?? '') === p.key;
+          return (
+            <button
+              key={p.key}
+              onClick={() => onPatch({ style: p.key })}
+              title={p.label}
+              style={{
+                height: 44,
+                borderRadius: 6,
+                background: p.background,
+                border: isActive ? '2px solid var(--accent)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                color: p.inkColor,
+                fontFamily: 'Cinzel, serif',
+                fontSize: 11,
+                letterSpacing: '0.08em',
+                textShadow: p.isLight ? '0 1px 0 rgba(255,255,255,0.5)' : '0 1px 0 rgba(0,0,0,0.5)',
+              }}
+            >
+              {p.label}
+            </button>
+          );
+        })}
       </div>
       <button className="btn btn-ghost" onClick={() => bgInput.current?.click()} style={{ width: '100%', marginBottom: 8 }}>
         <Icon name="image" size={13} /> Upload custom map image
       </button>
+      {map.style === 'image' && map.background?.startsWith('data:') && (
+        <div className="text-dim" style={{ fontSize: 11, marginBottom: 8, fontStyle: 'italic' }}>
+          Using uploaded image. Pick a style above to replace it.
+        </div>
+      )}
       <input ref={bgInput} type="file" accept="image/*" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; if (f) onUploadBg(f); e.target.value = ''; }} />
 
-      <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+      <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginTop: 4 }}>
         <input
           type="checkbox"
           checked={map.showGrid}
@@ -583,16 +734,24 @@ function MapSettingsPanel({ map, onPatch, onUploadBg, onDelete, pinCount, region
         />
         Show grid
       </label>
+      <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={!!map.showCompass}
+          onChange={e => onPatch({ showCompass: e.target.checked })}
+        />
+        Show compass rose
+      </label>
 
       <div className="rune-divider-app" />
 
       <div className="text-mute" style={{ fontSize: 12, lineHeight: 1.6 }}>
         <strong>Tips</strong><br />
-        • <strong>Pan</strong> tool: click & drag the map<br />
-        • <strong>Mouse wheel</strong>: zoom<br />
-        • <strong>Pin</strong> tool: click to drop<br />
-        • <strong>Region</strong> tool: click vertices, then "Finish region"<br />
-        • <strong>Select</strong> tool: click pins / regions to edit, drag pins to move
+        • <strong>Pan</strong>: click & drag · <strong>Wheel</strong>: zoom<br />
+        • <strong>Pin</strong>: click to drop — labels & article links<br />
+        • <strong>Stamp</strong>: scatter decorative scenery<br />
+        • <strong>Region</strong>: click vertices, then "Finish region"<br />
+        • <strong>Select</strong>: click anything to edit, drag pins/stamps to move
       </div>
 
       <div className="rune-divider-app" />
@@ -601,6 +760,98 @@ function MapSettingsPanel({ map, onPatch, onUploadBg, onDelete, pinCount, region
         <Icon name="trash" size={13} /> Delete map
       </button>
     </div>
+  );
+}
+
+function StampDetail({ stamp, onUpdate, onDelete, onClose }: {
+  stamp: MapStamp;
+  onUpdate: (p: Partial<MapStamp>) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const def = getStamp(stamp.kind);
+  const swatches = ['#4a3318', '#2c6a3a', '#1f4423', '#1b4a6e', '#3a3a3a', '#a83a2a', '#d49a2a', '#5c2d8a', '#d6cfb8', '#7a5a36', '#1a1a1a', '#43c7c7'];
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="text-eyebrow text-accent">Stamp</div>
+        <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon name="x" size={13} /></button>
+      </div>
+      <h3 className="text-display" style={{ fontSize: 18, margin: '4px 0 14px' }}>{def?.label ?? 'Stamp'}</h3>
+
+      <label className="label">Type</label>
+      <select
+        className="select"
+        value={stamp.kind}
+        onChange={e => {
+          const next = getStamp(e.target.value);
+          // When swapping type, adopt the new default color if user hadn't customized.
+          onUpdate({ kind: e.target.value, color: stamp.color === def?.defaultColor ? next?.defaultColor : stamp.color });
+        }}
+        style={{ marginBottom: 10 }}
+      >
+        {(Object.keys(STAMPS_BY_CATEGORY) as StampCategory[]).map(cat => (
+          <optgroup key={cat} label={CATEGORY_LABELS[cat]}>
+            {STAMPS_BY_CATEGORY[cat].map(s => (
+              <option key={s.key} value={s.key}>{s.label}</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+
+      <label className="label">Size · {Math.round(stamp.scale * 100)}%</label>
+      <input
+        type="range"
+        min={0.4} max={4} step={0.05}
+        value={stamp.scale}
+        onChange={e => onUpdate({ scale: parseFloat(e.target.value) })}
+        style={{ width: '100%', marginBottom: 8, accentColor: 'var(--accent)' }}
+      />
+
+      <label className="label">Rotation · {Math.round(stamp.rotation)}°</label>
+      <input
+        type="range"
+        min={-180} max={180} step={1}
+        value={stamp.rotation}
+        onChange={e => onUpdate({ rotation: parseFloat(e.target.value) })}
+        style={{ width: '100%', marginBottom: 8, accentColor: 'var(--accent)' }}
+      />
+
+      <label className="label">Color</label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+        {swatches.map(c => (
+          <button
+            key={c} onClick={() => onUpdate({ color: c })}
+            style={{ width: 22, height: 22, borderRadius: 99, background: c, border: (stamp.color ?? def?.defaultColor) === c ? '2px solid #fff' : '1px solid var(--border)', cursor: 'pointer' }}
+          />
+        ))}
+      </div>
+
+      <div className="text-dim" style={{ fontSize: 11, marginBottom: 10 }}>
+        Position: {stamp.x.toFixed(1)}, {stamp.y.toFixed(1)} · drag the stamp on the canvas to move it.
+      </div>
+
+      <button className="btn btn-danger" onClick={onDelete} style={{ width: '100%' }}>
+        <Icon name="trash" size={13} /> Delete stamp
+      </button>
+    </div>
+  );
+}
+
+function CompassRose({ color }: { color: string }) {
+  return (
+    <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', color }}>
+      <circle cx="50" cy="50" r="44" stroke="currentColor" strokeOpacity="0.6" strokeWidth="0.6" fill="none" />
+      <circle cx="50" cy="50" r="34" stroke="currentColor" strokeOpacity="0.4" strokeWidth="0.4" fill="none" />
+      {/* Main 4 points */}
+      <path fill="currentColor" fillOpacity="0.9" d="M50 8 L54 50 L50 92 L46 50 Z"/>
+      <path fill="currentColor" fillOpacity="0.6" d="M8 50 L50 54 L92 50 L50 46 Z"/>
+      {/* Diagonals */}
+      <path fill="currentColor" fillOpacity="0.5" d="M22 22 L52 48 L78 78 L48 52 Z"/>
+      <path fill="currentColor" fillOpacity="0.5" d="M78 22 L52 48 L22 78 L48 52 Z"/>
+      <circle cx="50" cy="50" r="3" fill="currentColor"/>
+      <text x="50" y="18" textAnchor="middle" fontSize="9" fontFamily="Cinzel, serif" fill="currentColor">N</text>
+    </svg>
   );
 }
 
