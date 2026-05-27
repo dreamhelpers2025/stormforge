@@ -21,16 +21,17 @@ export default function ArticlesList({ category }: Props) {
   const [sort, setSort] = useState<'updated' | 'created' | 'alpha'>('updated');
 
   const filtered = useMemo(() => {
-    let list = articles;
+    // Folders are tree-only containers; never list them as articles.
+    let list = articles.filter((a: any) => a.category !== 'folder');
     const cat = category ?? filterCat;
-    if (cat) list = list.filter(a => a.category === cat);
+    if (cat) list = list.filter((a: any) => a.category === cat);
     const query = q.trim().toLowerCase();
     if (query) {
-      list = list.filter(a =>
+      list = list.filter((a: any) =>
         a.title.toLowerCase().includes(query) ||
         a.summary.toLowerCase().includes(query) ||
         a.contentText.toLowerCase().includes(query) ||
-        a.tags.some(t => t.toLowerCase().includes(query))
+        a.tags.some((t: string) => t.toLowerCase().includes(query))
       );
     }
     list = [...list];

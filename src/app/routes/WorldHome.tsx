@@ -39,6 +39,7 @@ export default function WorldHome() {
   const stats = useMemo(() => {
     const out: { key: string; label: string; n: number; icon: any }[] = [];
     for (const c of CATEGORIES) {
+      if (c.key === 'folder') continue; // folders are containers, not categories to display
       const n = articles.filter((a: any) => a.category === c.key).length;
       if (n > 0) out.push({ key: c.key, label: c.plural, n, icon: c.icon });
     }
@@ -71,8 +72,8 @@ export default function WorldHome() {
     return <EmptyState title="World not found" description="It may have been erased. Return to the world list." />;
   }
 
-  const recent = [...articles].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5);
-  const pinned = articles.filter(a => a.pinned);
+  const recent = [...articles].filter((a: any) => a.category !== 'folder').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5);
+  const pinned = articles.filter((a: any) => a.pinned && a.category !== 'folder');
 
   async function saveMeta() {
     await updateWorld(worldId, meta);

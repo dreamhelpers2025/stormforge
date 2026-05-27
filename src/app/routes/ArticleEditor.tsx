@@ -10,6 +10,7 @@ import EmptyState from '../components/EmptyState';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SpeciesBuilder from '../components/SpeciesBuilder';
 import MagicSystemBuilder from '../components/MagicSystemBuilder';
+import BookBuilder from '../components/BookBuilder';
 import HistoryPanel from '../components/HistoryPanel';
 import Gallery from '../components/Gallery';
 import IconPicker from '../components/IconPicker';
@@ -223,17 +224,29 @@ export default function ArticleEditor() {
         </div>
       )}
 
-      <Editor
-        key={draft.id}
-        initialJson={draft.contentJson}
-        articlesIndex={articlesIndex}
-        category={draft.category}
-        onChange={(json, text) => {
-          setDraft(d => d ? ({ ...d, contentJson: json, contentText: text }) : d);
-          setDirty(true);
-        }}
-        onOpenArticle={(id) => navigate(`/w/${worldId}/articles/${id}`)}
-      />
+      {draft.category === 'book' ? (
+        <BookBuilder
+          article={draft}
+          articlesIndex={articlesIndex}
+          onPatch={(p) => {
+            setDraft(d => d ? { ...d, ...p } : d);
+            setDirty(true);
+          }}
+          onOpenArticle={(id) => navigate(`/w/${worldId}/articles/${id}`)}
+        />
+      ) : (
+        <Editor
+          key={draft.id}
+          initialJson={draft.contentJson}
+          articlesIndex={articlesIndex}
+          category={draft.category}
+          onChange={(json, text) => {
+            setDraft(d => d ? ({ ...d, contentJson: json, contentText: text }) : d);
+            setDirty(true);
+          }}
+          onOpenArticle={(id) => navigate(`/w/${worldId}/articles/${id}`)}
+        />
+      )}
 
       {showHistory && (
         <HistoryPanel

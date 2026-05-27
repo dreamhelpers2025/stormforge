@@ -34,10 +34,27 @@ export const CATEGORIES: CategoryDef[] = [
   { key: 'conflict',      label: 'Conflict',       plural: 'Conflicts',       icon: 'lightning',description: 'Wars, feuds, schisms',                       accent: '#B0413E', group: 'events' },
   { key: 'history',       label: 'History',        plural: 'History',         icon: 'scroll',   description: 'Eras, events, chronicles',                   accent: '#D8E0E5', group: 'events' },
   { key: 'note',          label: 'Note',           plural: 'Notes',           icon: 'feather',  description: 'Loose ideas and writing',                    accent: '#B5C0C9', group: 'writing' },
+  { key: 'book',          label: 'Book',           plural: 'Books',           icon: 'codex',    description: 'Long-form manuscript with multiple drafts',  accent: '#B88A3B', group: 'writing' },
+  // 'folder' exists for type completeness but is excluded from CATEGORIES so it never
+  // appears in template galleries / category filters. Folders are containers, not articles.
 ];
 
-export const CATEGORY_MAP: Record<ArticleCategory, CategoryDef> =
-  Object.fromEntries(CATEGORIES.map(c => [c.key, c])) as any;
+/** Synthetic category info for folders (kept out of CATEGORIES). */
+export const FOLDER_CATEGORY: CategoryDef = {
+  key: 'folder',
+  label: 'Folder',
+  plural: 'Folders',
+  icon: 'codex',
+  description: 'Container for organizing articles',
+  accent: '#B5C0C9',
+  group: 'writing',
+};
+
+export const CATEGORY_MAP: Record<ArticleCategory, CategoryDef> = (() => {
+  const out = Object.fromEntries(CATEGORIES.map(c => [c.key, c])) as any;
+  out.folder = FOLDER_CATEGORY;
+  return out;
+})();
 
 export const GROUPS: { key: CategoryDef['group']; label: string }[] = [
   { key: 'living',  label: 'Living Beings' },

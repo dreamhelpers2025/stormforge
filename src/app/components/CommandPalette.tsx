@@ -34,8 +34,9 @@ export default function CommandPalette({ open, onClose }: Props) {
     const out: Item[] = [];
     const query = q.trim().toLowerCase();
 
-    // Article matches
+    // Article matches (skip folders — they're tree containers, not navigable articles)
     for (const a of articles) {
+      if (a.category === 'folder') continue;
       if (!query || a.title.toLowerCase().includes(query) || a.contentText.toLowerCase().includes(query)) {
         out.push({
           id: 'a:' + a.id,

@@ -23,7 +23,9 @@ export type ArticleCategory =
   | 'deity'
   | 'history'
   | 'magic_system'
-  | 'note';
+  | 'note'
+  | 'folder'
+  | 'book';
 
 export type WorldTheme =
   | 'tempest'      // default

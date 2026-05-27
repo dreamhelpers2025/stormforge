@@ -1,18 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import Icon from './Icon';
 import Sigil from './Sigil';
 import AuthButton from './AuthButton';
 import SyncIndicator from './SyncIndicator';
 import NewArticleGallery from './NewArticleGallery';
+import SidebarTree from './SidebarTree';
 import { useWorlds } from '../stores/useWorlds';
 import { useSettings } from '../stores/useSettings';
 import { useArticles, EMPTY_ARTICLES } from '../stores/useArticles';
-import { CATEGORIES, CATEGORY_MAP, GROUPS } from '../lib/categories';
+import { useToast } from '../stores/useToast';
 import type { Article } from '../types';
 
 export default function Sidebar() {
-  const { worldId, articleId } = useParams();
+  const { worldId } = useParams();
   const navigate = useNavigate();
   const worlds = useWorlds(s => s.worlds);
   const world = worlds.find(w => w.id === worldId);
@@ -20,44 +21,41 @@ export default function Sidebar() {
   const setTheme = useSettings(s => s.setTheme);
   const articles = useArticles(s => (worldId ? (s.byWorld[worldId] ?? EMPTY_ARTICLES) : EMPTY_ARTICLES)) as unknown as Article[];
   const loadArticles = useArticles(s => s.loadWorld);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const createFolder = useArticles(s => s.createFolder);
+  const push = useToast(s => s.push);
+
   const [newArticleOpen, setNewArticleOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [folderName, setFolderName] = useState('');
 
   useEffect(() => { if (worldId) loadArticles(worldId); }, [worldId, loadArticles]);
 
-  // Group articles by category, only include categories that have articles
-  const articlesByCat = useMemo(() => {
-    const out: Record<string, Article[]> = {};
-    for (const a of articles) {
-      (out[a.category] = out[a.category] ?? []).push(a);
-    }
-    // Sort articles within each category alphabetically
-    for (const k in out) out[k] = out[k].sort((a, b) => a.title.localeCompare(b.title));
-    return out;
-  }, [articles]);
-
-  const filteredArticles = useMemo(() => {
+  const filteredArticles = (() => {
     const q = search.trim().toLowerCase();
     if (!q) return articles;
-    return articles.filter(a => a.title.toLowerCase().includes(q));
-  }, [articles, search]);
-
-  const filteredByCat = useMemo(() => {
-    const out: Record<string, Article[]> = {};
-    for (const a of filteredArticles) {
-      (out[a.category] = out[a.category] ?? []).push(a);
+    // When searching, return matching articles + their ancestor folders so the tree still makes sense
+    const matches = new Set(articles.filter(a => a.title.toLowerCase().includes(q)).map(a => a.id));
+    if (matches.size === 0) return [];
+    const byId = new Map<string, Article>();
+    for (const a of articles) byId.set(a.id, a);
+    const include = new Set(matches);
+    for (const id of matches) {
+      let cur = byId.get(id)?.meta?.parentId as string | undefined;
+      while (cur) {
+        include.add(cur);
+        cur = byId.get(cur)?.meta?.parentId as string | undefined;
+      }
     }
-    for (const k in out) out[k] = out[k].sort((a, b) => a.title.localeCompare(b.title));
-    return out;
-  }, [filteredArticles]);
+    return articles.filter(a => include.has(a.id));
+  })();
 
-  function toggle(group: string) {
-    setCollapsed(c => ({ ...c, [group]: !c[group] }));
-  }
-
-  function articleIcon(a: Article): string | null {
-    return a.meta?.icon || null;
+  async function handleCreateFolder() {
+    if (!worldId || !folderName.trim()) return;
+    await createFolder(worldId, folderName.trim());
+    setCreatingFolder(false);
+    setFolderName('');
+    push('Folder created.', 'success');
   }
 
   return (
@@ -102,15 +100,22 @@ export default function Sidebar() {
 
       {worldId ? (
         <>
-          {/* Prominent new article button */}
-          <div style={{ padding: '0 14px 10px' }}>
+          {/* New article + new folder */}
+          <div style={{ padding: '0 14px 10px', display: 'flex', gap: 6 }}>
             <button
               className="btn btn-primary"
               onClick={() => setNewArticleOpen(true)}
-              style={{ width: '100%', fontSize: 12 }}
+              style={{ flex: 1, fontSize: 12 }}
               title="Create a new article from a template or scratch"
             >
               <Icon name="plus" size={13} /> New Article
+            </button>
+            <button
+              className="btn btn-ghost btn-icon"
+              onClick={() => { setCreatingFolder(true); setFolderName(''); }}
+              title="Create a folder"
+            >
+              📁
             </button>
           </div>
 
@@ -129,12 +134,12 @@ export default function Sidebar() {
             </NavLink>
           </div>
 
-          {/* My articles section */}
-          <div className="sidebar-group" style={{ marginTop: 14 }}>
+          {/* My articles section header */}
+          <div className="sidebar-group" style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>My Articles</span>
             {articles.length > 0 && (
               <span style={{ color: 'var(--text-dim)', letterSpacing: 0, textTransform: 'none' }}>
-                {articles.length}
+                {articles.filter(a => a.category !== 'folder').length}
               </span>
             )}
           </div>
@@ -157,93 +162,8 @@ export default function Sidebar() {
             </div>
           )}
 
-          {articles.length === 0 ? (
-            <div style={{ padding: '4px 18px 12px' }}>
-              <div className="text-mute" style={{ fontSize: 12, lineHeight: 1.5, fontStyle: 'italic' }}>
-                No articles yet. Click <strong style={{ color: 'var(--accent)' }}>+ New Article</strong> above to begin.
-              </div>
-            </div>
-          ) : (
-            GROUPS.map(g => {
-              const catsInGroup = CATEGORIES.filter(c => c.group === g.key);
-              const visibleCats = catsInGroup.filter(c => (filteredByCat[c.key]?.length ?? 0) > 0);
-              if (visibleCats.length === 0) return null;
-              const isCollapsed = collapsed[g.key];
-              return (
-                <div key={g.key} style={{ paddingBottom: 4 }}>
-                  <div
-                    className="sidebar-group"
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                    onClick={() => toggle(g.key)}
-                  >
-                    <span>{g.label}</span>
-                    <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} size={11} />
-                  </div>
-                  {!isCollapsed && (
-                    <div className="sidebar-section">
-                      {visibleCats.map(c => {
-                        const arts = filteredByCat[c.key] ?? [];
-                        const catCollapseKey = `cat:${c.key}`;
-                        const catCollapsed = collapsed[catCollapseKey];
-                        return (
-                          <div key={c.key} style={{ marginBottom: 2 }}>
-                            <div
-                              className="sidebar-link"
-                              style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', paddingRight: 6 }}
-                              onClick={() => toggle(catCollapseKey)}
-                            >
-                              <Icon name={c.icon as any} size={14} style={{ color: c.accent } as any} />
-                              <span style={{ flex: 1, fontSize: 12.5 }}>{c.label}</span>
-                              <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{arts.length}</span>
-                              <Icon name={catCollapsed ? 'chevron-right' : 'chevron-down'} size={10} />
-                            </div>
-                            {!catCollapsed && (
-                              <div style={{ paddingLeft: 22 }}>
-                                {arts.map(a => {
-                                  const customIcon = articleIcon(a);
-                                  const isActive = articleId === a.id;
-                                  return (
-                                    <NavLink
-                                      key={a.id}
-                                      to={`/w/${worldId}/articles/${a.id}`}
-                                      className={'sidebar-link' + (isActive ? ' active' : '')}
-                                      title={a.title}
-                                      style={{ fontSize: 12, padding: '4px 10px' }}
-                                    >
-                                      {customIcon ? (
-                                        <span style={{ fontSize: 12, marginRight: 2 }}>{customIcon}</span>
-                                      ) : (
-                                        <span style={{ width: 12, color: 'var(--text-dim)' }}>·</span>
-                                      )}
-                                      <span style={{
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                        flex: 1,
-                                      }}>
-                                        {a.title}
-                                      </span>
-                                    </NavLink>
-                                  );
-                                })}
-                                <NavLink
-                                  to={`/w/${worldId}/category/${c.key}`}
-                                  className="sidebar-link"
-                                  style={{ fontSize: 11, color: 'var(--text-dim)', padding: '3px 10px' }}
-                                >
-                                  Open all {c.plural.toLowerCase()} →
-                                </NavLink>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
+          {/* The tree */}
+          <SidebarTree articles={filteredArticles} />
         </>
       ) : (
         <div className="sidebar-section" style={{ padding: '8px 18px' }}>
@@ -275,6 +195,31 @@ export default function Sidebar() {
       </div>
 
       <NewArticleGallery open={newArticleOpen} onClose={() => setNewArticleOpen(false)} />
+
+      {/* New folder modal */}
+      {creatingFolder && (
+        <div className="modal-backdrop" onClick={() => setCreatingFolder(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="text-eyebrow">Folder</div>
+            <h2 className="text-display" style={{ fontSize: 18, margin: '6px 0 12px' }}>Name your folder</h2>
+            <input
+              autoFocus
+              className="input"
+              placeholder="e.g. House Vorelith, Northern Reaches…"
+              value={folderName}
+              onChange={e => setFolderName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setCreatingFolder(false); }}
+            />
+            <p className="text-mute" style={{ fontSize: 12, marginTop: 8 }}>
+              You can drag articles into the folder. Folders can contain other folders.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button className="btn btn-ghost" onClick={() => setCreatingFolder(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={!folderName.trim()} onClick={handleCreateFolder}>Create folder</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
