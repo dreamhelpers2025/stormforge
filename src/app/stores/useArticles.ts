@@ -159,8 +159,9 @@ export const useArticles = create<ArticlesStore>((set, get) => ({
     const existing = get().byWorld[worldId] ?? [];
     const next = [...articles, ...existing];
     set({ byWorld: { ...get().byWorld, [worldId]: next } });
-    // Fire cloud upserts (best-effort, fire-and-forget; reconcile catches stragglers)
-    for (const a of articles) cloud.upsertArticle(a);
+    // Batched cloud upload — chunks 20 rows per request so the Supabase free
+    // tier doesn't throttle on 50+ simultaneous connections.
+    cloud.bulkUpsertArticles(articles);
   },
   removeRecursive: async (id) => {
     const root = await db.articles.get(id);

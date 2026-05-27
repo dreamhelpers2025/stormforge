@@ -245,6 +245,25 @@ export function upsertArticle(a: Article) {
   const uid = ensureSignedIn(); if (!uid) return;
   runOp(() => supabase.from('articles').upsert(articleToCloud(a, uid)).then(throwIfErr));
 }
+
+/**
+ * Batch upsert many articles at once. Used by the import flow so we don't
+ * fire 50+ simultaneous requests at the Supabase free tier (which can throttle
+ * or fail on overlapping connections). Chunks 20 rows per HTTP call and
+ * awaits each chunk before moving on.
+ */
+export function bulkUpsertArticles(articles: Article[]) {
+  const uid = ensureSignedIn(); if (!uid) return;
+  if (articles.length === 0) return;
+  runOp(async () => {
+    const CHUNK = 20;
+    for (let i = 0; i < articles.length; i += CHUNK) {
+      const slice = articles.slice(i, i + CHUNK).map(a => articleToCloud(a, uid));
+      const { error } = await supabase.from('articles').upsert(slice);
+      if (error) throw error;
+    }
+  });
+}
 export function deleteArticle(id: string) {
   const uid = ensureSignedIn(); if (!uid) return;
   runOp(async () => {
