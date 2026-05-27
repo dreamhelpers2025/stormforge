@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../stores/useAuth';
 import { useProfile, usernameFromEmail } from '../stores/useProfile';
 import { useToast } from '../stores/useToast';
-import { compressFile } from '../lib/imageCompress';
 import Icon from '../components/Icon';
 import EmptyState from '../components/EmptyState';
 
@@ -18,15 +17,31 @@ export default function Profile() {
   const saving = useProfile(s => s.saving);
   const hydrate = useProfile(s => s.hydrate);
   const update = useProfile(s => s.update);
+  const uploadImage = useProfile(s => s.uploadImage);
+  const removeImage = useProfile(s => s.removeImage);
   const push = useToast(s => s.push);
 
-  const [draft, setDraft] = useState(profile);
+  // Draft holds the unsaved text/accent fields. Image uploads commit
+  // immediately to Storage and reflect in `profile` directly — they bypass
+  // the draft/save flow.
+  const [draft, setDraft] = useState({
+    displayName: profile.displayName,
+    bio: profile.bio,
+    accent: profile.accent,
+  });
   const [dirty, setDirty] = useState(false);
   const avatarInput = useRef<HTMLInputElement>(null);
   const bgInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (!loaded) hydrate(); }, [loaded, hydrate]);
-  useEffect(() => { setDraft(profile); setDirty(false); }, [profile]);
+  useEffect(() => {
+    setDraft({
+      displayName: profile.displayName,
+      bio: profile.bio,
+      accent: profile.accent,
+    });
+    setDirty(false);
+  }, [profile.displayName, profile.bio, profile.accent]);
 
   if (!user) {
     return (
@@ -53,13 +68,21 @@ export default function Profile() {
     setDirty(true);
   }
 
-  async function uploadAvatar(file: File) {
-    const compressed = await compressFile(file, 400, 0.85);
-    patch('avatarDataUrl', compressed);
+  async function handleUpload(kind: 'avatar' | 'background', file: File) {
+    try {
+      await uploadImage(kind, file);
+      push(`${kind === 'avatar' ? 'Avatar' : 'Background'} updated.`, 'success');
+    } catch (e: any) {
+      push(`Upload failed: ${e?.message ?? 'unknown'}`, 'error');
+    }
   }
-  async function uploadBackground(file: File) {
-    const compressed = await compressFile(file, 1800, 0.78);
-    patch('backgroundDataUrl', compressed);
+  async function handleRemove(kind: 'avatar' | 'background') {
+    try {
+      await removeImage(kind);
+      push(`${kind === 'avatar' ? 'Avatar' : 'Background'} removed.`, 'info');
+    } catch (e: any) {
+      push(`Remove failed: ${e?.message ?? 'unknown'}`, 'error');
+    }
   }
 
   async function save() {
@@ -80,7 +103,7 @@ export default function Profile() {
       <div style={{
         position: 'relative',
         height: 220,
-        background: draft.backgroundDataUrl ? `url(${draft.backgroundDataUrl}) center/cover` : DEFAULT_BG,
+        background: profile.backgroundUrl ? `url(${profile.backgroundUrl}) center/cover` : DEFAULT_BG,
         borderRadius: '0 0 0 0',
         marginBottom: 70,
       }}>
@@ -91,15 +114,17 @@ export default function Profile() {
             style={{ background: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
             onClick={() => bgInput.current?.click()}
             title="Upload background image"
+            disabled={saving}
           >
             <Icon name="image" size={14} />
           </button>
-          {draft.backgroundDataUrl && (
+          {profile.backgroundPath && (
             <button
               className="btn btn-ghost btn-icon"
               style={{ background: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
-              onClick={() => patch('backgroundDataUrl', undefined)}
+              onClick={() => handleRemove('background')}
               title="Remove background image"
+              disabled={saving}
             >
               <Icon name="x" size={14} />
             </button>
@@ -109,7 +134,7 @@ export default function Profile() {
             type="file"
             accept="image/*"
             style={{ display: 'none' }}
-            onChange={e => { const f = e.target.files?.[0]; if (f) uploadBackground(f); e.target.value = ''; }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload('background', f); e.target.value = ''; }}
           />
         </div>
 
@@ -122,7 +147,7 @@ export default function Profile() {
             width: 112,
             height: 112,
             borderRadius: '50%',
-            background: draft.avatarDataUrl ? `url(${draft.avatarDataUrl}) center/cover` : (draft.accent || 'var(--accent-2)'),
+            background: profile.avatarUrl ? `url(${profile.avatarUrl}) center/cover` : (draft.accent || 'var(--accent-2)'),
             border: '4px solid var(--bg-elev)',
             boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
             display: 'flex',
@@ -133,7 +158,7 @@ export default function Profile() {
             fontFamily: 'Cinzel, serif',
           }}
         >
-          {!draft.avatarDataUrl && initial}
+          {!profile.avatarUrl && initial}
           <button
             className="btn btn-ghost btn-icon"
             style={{
@@ -145,10 +170,11 @@ export default function Profile() {
             }}
             onClick={() => avatarInput.current?.click()}
             title="Upload avatar"
+            disabled={saving}
           >
             <Icon name="image" size={15} />
           </button>
-          {draft.avatarDataUrl && (
+          {profile.avatarPath && (
             <button
               className="btn btn-ghost btn-icon"
               style={{
@@ -157,8 +183,9 @@ export default function Profile() {
                 borderColor: 'rgba(255,255,255,0.3)',
                 borderRadius: '50%', width: 26, height: 26,
               }}
-              onClick={() => patch('avatarDataUrl', undefined)}
+              onClick={() => handleRemove('avatar')}
               title="Remove avatar"
+              disabled={saving}
             >
               <Icon name="x" size={11} />
             </button>
@@ -168,7 +195,7 @@ export default function Profile() {
             type="file"
             accept="image/*"
             style={{ display: 'none' }}
-            onChange={e => { const f = e.target.files?.[0]; if (f) uploadAvatar(f); e.target.value = ''; }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload('avatar', f); e.target.value = ''; }}
           />
         </div>
       </div>

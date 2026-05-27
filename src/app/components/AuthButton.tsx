@@ -40,10 +40,10 @@ export default function AuthButton() {
           onClick={() => setOpen(o => !o)}
           title="Account"
         >
-          {profile.avatarDataUrl ? (
+          {profile.avatarUrl ? (
             <span style={{
               width: 26, height: 26, borderRadius: 99,
-              background: `url(${profile.avatarDataUrl}) center/cover`,
+              background: `url(${profile.avatarUrl}) center/cover`,
               flexShrink: 0,
               border: '1px solid var(--border)',
             }} />

@@ -28,6 +28,7 @@ import { useMembers } from './stores/useMembers';
 import { useToast } from './stores/useToast';
 import { useSync } from './stores/useSync';
 import { reconcileAll, resync, setCurrentUser } from './lib/cloudSync';
+import { wipeLocalDatabase } from './db';
 import { CATEGORY_MAP } from './lib/categories';
 import ErrorBoundary from './components/ErrorBoundary';
 import type { ArticleCategory } from './types';
@@ -82,6 +83,26 @@ function Bootstrap({ children }: { children: React.ReactNode }) {
     if (user) {
       setCurrentUser(user.id);
       (async () => {
+        // Account-switch hygiene: if a DIFFERENT user signed in last time
+        // than the one now signing in, wipe the local DB so we don't leak
+        // their data into this session. First-ever sign-in (no lastUser
+        // stored) leaves any anonymous work alone so it can sync upward.
+        try {
+          const LAST_USER_KEY = 'stormforge.lastUser';
+          const lastUser = localStorage.getItem(LAST_USER_KEY);
+          if (lastUser && lastUser !== user.id) {
+            console.info('[Bootstrap] Different account detected — wiping local DB before sync.');
+            await wipeLocalDatabase();
+            // Re-hydrate the two stores that pulled from the (now empty) DB.
+            // Reconcile will then refill them from the cloud.
+            await useSettings.getState().hydrate();
+            await useWorlds.getState().hydrate();
+          }
+          localStorage.setItem(LAST_USER_KEY, user.id);
+        } catch (e) {
+          console.warn('[Bootstrap] Account-switch wipe failed (continuing):', e);
+        }
+
         // Claim any pending invites first — that way the next reconcile picks
         // up newly-accessible worlds.
         try {

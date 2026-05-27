@@ -59,6 +59,7 @@ export default function MapEditor() {
   const isPanning = useRef<{ x: number; y: number } | null>(null);
   const draggingPin = useRef<string | null>(null);
   const draggingStamp = useRef<string | null>(null);
+  const draggingVertex = useRef<{ regionId: string; idx: number } | null>(null);
 
   // Normalize stamps array so existing maps without it don't crash.
   const stamps: MapStamp[] = (map as any)?.stamps ?? [];
@@ -155,8 +156,48 @@ export default function MapEditor() {
     setSelectedRegion(null);
   }
 
+  function startDragVertex(regionId: string, idx: number, e: React.MouseEvent) {
+    if (tool !== 'edit') return;
+    e.stopPropagation();
+    draggingVertex.current = { regionId, idx };
+    setSelectedRegion(regionId);
+    setSelectedPin(null);
+    setSelectedStamp(null);
+  }
+
+  function insertVertexAfter(regionId: string, afterIdx: number) {
+    const r = map.regions.find(x => x.id === regionId);
+    if (!r) return;
+    const a = r.points[afterIdx];
+    const b = r.points[(afterIdx + 1) % r.points.length];
+    if (!a || !b) return;
+    const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const next = [...r.points.slice(0, afterIdx + 1), mid, ...r.points.slice(afterIdx + 1)];
+    patchMap({ regions: map.regions.map(x => x.id === regionId ? { ...x, points: next } : x) });
+  }
+
+  function deleteVertex(regionId: string, idx: number) {
+    const r = map.regions.find(x => x.id === regionId);
+    if (!r) return;
+    if (r.points.length <= 3) {
+      push('A polygon needs at least 3 vertices.', 'error');
+      return;
+    }
+    const next = r.points.filter((_, i) => i !== idx);
+    patchMap({ regions: map.regions.map(x => x.id === regionId ? { ...x, points: next } : x) });
+  }
+
   function handleMouseMove(e: React.MouseEvent) {
-    if (draggingPin.current) {
+    if (draggingVertex.current) {
+      const { x, y } = svgCoords(e.clientX, e.clientY);
+      const dv = draggingVertex.current;
+      const updated = map.regions.map(r => {
+        if (r.id !== dv.regionId) return r;
+        const points = r.points.map((p, i) => i === dv.idx ? [x, y] as [number, number] : p);
+        return { ...r, points };
+      });
+      patchMap({ regions: updated });
+    } else if (draggingPin.current) {
       const { x, y } = svgCoords(e.clientX, e.clientY);
       const updated = map.pins.map(p => p.id === draggingPin.current ? { ...p, x, y } : p);
       patchMap({ pins: updated });
@@ -175,6 +216,7 @@ export default function MapEditor() {
   function handleMouseUp() {
     draggingPin.current = null;
     draggingStamp.current = null;
+    draggingVertex.current = null;
     isPanning.current = null;
   }
 
@@ -350,10 +392,69 @@ export default function MapEditor() {
                       e.stopPropagation();
                       setSelectedRegion(r.id);
                       setSelectedPin(null);
+                      setSelectedStamp(null);
                     }}
                   />
                 );
               })}
+
+              {/* Vertex + midpoint handles for the selected region */}
+              {tool === 'edit' && selRegion && selRegion.points.length >= 3 && (
+                <g>
+                  {/* Midpoint insert handles — render under vertices so they
+                      sit behind on overlap. Click to insert a new vertex. */}
+                  {selRegion.points.map(([ax, ay], i) => {
+                    const [bx, by] = selRegion.points[(i + 1) % selRegion.points.length];
+                    const mx = (ax + bx) / 2;
+                    const my = (ay + by) / 2;
+                    return (
+                      <circle
+                        key={`mid-${i}`}
+                        cx={mx}
+                        cy={my}
+                        r="0.55"
+                        fill="rgba(255,255,255,0.65)"
+                        stroke={selRegion.color}
+                        strokeWidth="0.18"
+                        style={{ cursor: 'copy' }}
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation();
+                          insertVertexAfter(selRegion.id, i);
+                        }}
+                      >
+                        <title>Click to add a vertex here</title>
+                      </circle>
+                    );
+                  })}
+                  {/* Vertex drag handles */}
+                  {selRegion.points.map(([x, y], i) => (
+                    <circle
+                      key={`v-${i}`}
+                      cx={x}
+                      cy={y}
+                      r="0.85"
+                      fill={selRegion.color}
+                      stroke="#ffffff"
+                      strokeWidth="0.22"
+                      style={{ cursor: 'grab' }}
+                      onMouseDown={e => {
+                        if (e.altKey) {
+                          // Alt-click: delete this vertex.
+                          e.stopPropagation();
+                          e.preventDefault();
+                          deleteVertex(selRegion.id, i);
+                          return;
+                        }
+                        startDragVertex(selRegion.id, i, e);
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <title>Drag to move · Alt-click to remove</title>
+                    </circle>
+                  ))}
+                </g>
+              )}
 
               {/* Pending region preview */}
               {pendingRegionPoints.length > 0 && (
@@ -662,6 +763,11 @@ function RegionDetail({ region, articles, worldId, onUpdate, onDelete, onOpenArt
 
       <div className="text-dim" style={{ fontSize: 11, margin: '12px 0' }}>
         {region.points.length} vertices
+      </div>
+      <div className="text-mute" style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 12 }}>
+        <strong>Reshape:</strong> drag the colored dots on the canvas to move a corner.
+        Click a white dot between two corners to <em>insert</em> a new one.
+        Alt-click a colored dot to <em>remove</em> it.
       </div>
 
       <button className="btn btn-danger" onClick={onDelete} style={{ width: '100%' }}>

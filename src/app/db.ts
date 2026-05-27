@@ -52,3 +52,22 @@ export async function patchSettings(patch: Partial<AppSettings>): Promise<AppSet
   await db.settings.put(next);
   return next;
 }
+
+/**
+ * Clear every table in the local database. Used when a different user signs
+ * in to make sure we don't leak data between accounts that happen to share a
+ * browser profile (Rob + Gracie on the same Windows machine, for example).
+ *
+ * Settings is also wiped because it stores activeWorldId / recentArticleIds
+ * which point at world-scoped data we just removed.
+ */
+export async function wipeLocalDatabase(): Promise<void> {
+  await Promise.all([
+    db.worlds.clear(),
+    db.articles.clear(),
+    db.maps.clear(),
+    db.scratchpad.clear(),
+    db.settings.clear(),
+    db.revisions.clear(),
+  ]);
+}
